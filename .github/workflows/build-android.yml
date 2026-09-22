@@ -23,19 +23,12 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-          cmdline-tools-version: "11076708"
-
       - name: Grant Execute Permission to gradlew
-        run: |
-          chmod +x android/gradlew
-          chmod +x deploy.sh
+        run: chmod +x android/gradlew
 
-      - name: Build Debug APK with Gradle (Pure Jetpack Compose)
+      - name: Accept Android SDK Licenses & Build APK
         run: |
+          yes | sdkmanager --licenses || true
           cd android
           ./gradlew assembleDebug --no-daemon --stacktrace
 

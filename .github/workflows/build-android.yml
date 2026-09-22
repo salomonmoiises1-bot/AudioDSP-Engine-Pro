@@ -1,4 +1,4 @@
-name: Build WaveEQ Android APK
+Name: Build WaveEQ Android APK
 
 on:
   push:
@@ -27,6 +27,7 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
+          cmdline-tools-version: "11076708"
 
       - name: Grant Execute Permission to gradlew
         run: |

@@ -20,10 +20,11 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Install Gradle Manually
+      - name: Install Modern Gradle Manually
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gradle
+          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip -O gradle.zip
+          unzip -q gradle.zip
+          echo "$PWD/gradle-8.5/bin" >> $GITHUB_PATH
 
       - name: Setup Android SDK Environment Manually
         run: |

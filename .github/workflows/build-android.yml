@@ -1,4 +1,4 @@
-Name: Build WaveEQ Android APK
+name: Build WaveEQ Android APK
 
 on:
   push:

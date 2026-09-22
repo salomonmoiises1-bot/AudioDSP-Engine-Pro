@@ -20,6 +20,11 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Install Gradle Manually
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gradle
+
       - name: Setup Android SDK Environment Manually
         run: |
           export ANDROID_SDK_ROOT=$HOME/android-sdk
@@ -40,8 +45,7 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

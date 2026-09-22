@@ -3,13 +3,10 @@ name: Build WaveEQ Android APK
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build Native Android APK (Jetpack Compose)
     runs-on: ubuntu-latest
 
     steps:
@@ -21,21 +18,20 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Grant Execute Permission to gradlew
-        run: chmod +x android/gradlew
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
 
-      - name: Accept Android SDK Licenses & Build APK
+      - name: Build with Gradle
         run: |
-          yes | sdkmanager --licenses || true
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
-      - name: Upload Debug APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WaveEQ-Debug-APK
+          name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
-          retention-days: 14

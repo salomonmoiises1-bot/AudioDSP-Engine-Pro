@@ -1,1 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.audiowaveeq">
 
+    <!-- Permisos esenciales para captura y modificación de audio global sin root -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Notificaciones requeridas en Android 13+ (API 33) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Foreground Service obligatorio en Android 14+ (API 34) especificando mediaProcessing -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+
+    <application
+        android:name=".MainApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="WaveEQ"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        tools:targetApi="34">
+
+        <!-- Actividad Principal Nativa Jetpack Compose -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="WaveEQ"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Servicio de Foreground indestructible para procesamiento de audio en tiempo real -->
+        <service
+            android:name=".AudioEQService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaProcessing" />
+
+        <!-- Receptor de transmisiones para capturar aperturas y cierres de sesiones de audio (Spotify, YouTube, AIMP, etc.) -->
+        <receiver
+            android:name=".AudioReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <!-- Intent estándar de Android para apertura/cierre de sesiones de efectos de audio -->
+                <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION" />
+                <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
+
+                <!-- Intenta capturar eventos de reproductores populares para sincronización inmediata -->
+                <action android:name="com.android.music.metachanged" />
+                <action android:name="com.android.music.playstatechanged" />
+                <action android:name="com.android.music.playbackcomplete" />
+                <action android:name="com.spotify.music.metachanged" />
+                <action android:name="com.spotify.music.playbackstatechanged" />
+                <action android:name="com.aimp.player.metachanged" />
+                <action android:name="com.aimp.player.playstatechanged" />
+
+                <!-- Reinicio automático del servicio al iniciar el sistema -->
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

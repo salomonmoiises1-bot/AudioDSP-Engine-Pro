@@ -41,7 +41,9 @@ jobs:
       - name: Accept Licenses and Install Build Tools
         run: |
           export PATH=$PATH:$HOME/android-sdk/cmdline-tools/latest/bin
-          yes | sdkmanager --licenses || true
+          mkdir -p $HOME/android-sdk/licenses
+          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd\n24333f8a43b680d230493639a03630f406ad9bef\nd56f5187479451eabf01fb78af6dfcb131a648b0" > $HOME/android-sdk/licenses/android-sdk-license
+          sdkmanager --licenses || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build with Gradle

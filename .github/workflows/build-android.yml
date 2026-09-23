@@ -20,12 +20,6 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Install Modern Gradle Manually
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O gradle.zip
-          unzip -q gradle.zip
-          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
-
       - name: Accept Licenses and Install Build Tools
         run: |
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
@@ -36,7 +30,8 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          gradle assembleDebug --no-daemon --stacktrace
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

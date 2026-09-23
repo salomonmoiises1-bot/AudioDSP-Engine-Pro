@@ -26,45 +26,63 @@ class AudioEQService : Service() {
 
         const val ACTION_START_SERVICE =
             "com.audiowaveeq.ACTION_START_SERVICE"
+
         const val ACTION_BOOT_START =
             "com.audiowaveeq.ACTION_BOOT_START"
+
         const val ACTION_ENSURE_ACTIVE =
             "com.audiowaveeq.ACTION_ENSURE_ACTIVE"
+
         const val ACTION_OPEN_SESSION =
             "com.audiowaveeq.ACTION_OPEN_SESSION"
+
         const val ACTION_CLOSE_SESSION =
             "com.audiowaveeq.ACTION_CLOSE_SESSION"
+
         const val ACTION_SET_BAND_GAIN =
             "com.audiowaveeq.ACTION_SET_BAND_GAIN"
+
         const val ACTION_SET_ALL_BANDS =
             "com.audiowaveeq.ACTION_SET_ALL_BANDS"
+
         const val ACTION_SET_LIMITER_ENABLED =
             "com.audiowaveeq.ACTION_SET_LIMITER_ENABLED"
+
         const val ACTION_TOGGLE_EQ =
             "com.audiowaveeq.ACTION_TOGGLE_EQ"
+
         const val ACTION_SET_MDRC_THRESHOLD =
             "com.audiowaveeq.ACTION_SET_MDRC_THRESHOLD"
 
         const val EXTRA_SESSION_ID =
             "com.audiowaveeq.EXTRA_SESSION_ID"
+
         const val EXTRA_CALLING_PACKAGE =
             "com.audiowaveeq.EXTRA_CALLING_PACKAGE"
+
         const val EXTRA_BAND_INDEX =
             "com.audiowaveeq.EXTRA_BAND_INDEX"
+
         const val EXTRA_BAND_GAIN =
             "com.audiowaveeq.EXTRA_BAND_GAIN"
+
         const val EXTRA_ALL_GAINS =
             "com.audiowaveeq.EXTRA_ALL_GAINS"
+
         const val EXTRA_LIMITER_ENABLED =
             "com.audiowaveeq.EXTRA_LIMITER_ENABLED"
+
         const val EXTRA_EQ_ENABLED =
             "com.audiowaveeq.EXTRA_EQ_ENABLED"
+
         const val EXTRA_MDRC_BAND =
             "com.audiowaveeq.EXTRA_MDRC_BAND"
+
         const val EXTRA_MDRC_THRESHOLD =
             "com.audiowaveeq.EXTRA_MDRC_THRESHOLD"
 
         const val TOTAL_PEQ_BANDS = 32
+
         const val GLOBAL_AUDIO_SESSION_ID = 0
 
         const val LIMITER_ATTACK_TIME_MS = 1.0f
@@ -196,6 +214,7 @@ class AudioEQService : Service() {
                 ACTION_ENSURE_ACTIVE,
                 ACTION_START_SERVICE,
                 ACTION_BOOT_START -> {
+
                     attachOrUpdateSession(
                         sessionId,
                         callingPackage
@@ -221,6 +240,7 @@ class AudioEQService : Service() {
                         )
 
                     if (bandIndex in 0 until TOTAL_PEQ_BANDS) {
+
                         setBandGain(
                             bandIndex,
                             gain
@@ -239,6 +259,7 @@ class AudioEQService : Service() {
                         gains != null &&
                         gains.size == TOTAL_PEQ_BANDS
                     ) {
+
                         setAllBandGains(gains)
                     }
                 }
@@ -352,6 +373,7 @@ class AudioEQService : Service() {
                 )
 
             } else {
+
                 null
             }
 
@@ -614,7 +636,7 @@ class AudioEQService : Service() {
 
                 if (
                     existing != null &&
-                    !existing.isEnabled
+                    !existing.enabled
                 ) {
                     existing.enabled = true
                 }
@@ -697,10 +719,12 @@ class AudioEQService : Service() {
         if (
             bandIndex !in 0 until TOTAL_PEQ_BANDS
         ) {
+
             Log.e(
                 TAG,
                 "Índice de banda fuera de rango: $bandIndex"
             )
+
             return
         }
 
@@ -755,10 +779,12 @@ class AudioEQService : Service() {
         if (
             gains.size != TOTAL_PEQ_BANDS
         ) {
+
             Log.e(
                 TAG,
                 "Se esperaban 32 ganancias, recibidas ${gains.size}"
             )
+
             return
         }
 
@@ -830,8 +856,7 @@ class AudioEQService : Service() {
                             channelIndex
                         )
 
-                    limiter.enabled =
-                        enabled
+                    limiter.setEnabled(enabled)
 
                     effect.setLimiterByChannelIndex(
                         channelIndex,
@@ -860,9 +885,12 @@ class AudioEQService : Service() {
         activeEffects.forEach { (_, effect) ->
 
             try {
+
                 effect.enabled =
                     enabled
+
             } catch (e: Exception) {
+
                 Log.w(
                     TAG,
                     "Error cambiando estado EQ: ${e.message}"
@@ -913,8 +941,7 @@ class AudioEQService : Service() {
                                 bandIndex
                             )
 
-                        band.enabled =
-                            enabled
+                        band.setEnabled(enabled)
 
                         effect.setMbcBandByChannelIndex(
                             channelIndex,
@@ -1041,205 +1068,4 @@ class AudioEQService : Service() {
 
                 for (
                     bandIndex
-                    in 0 until minOf(3, bandCount)
-                ) {
-
-                    for (channelIndex in 0..1) {
-
-                        val band =
-                            effect.getPostEqBandByChannelIndex(
-                                channelIndex,
-                                bandIndex
-                            )
-
-                        band.enabled =
-                            enabled
-
-                        effect.setPostEqBandByChannelIndex(
-                            channelIndex,
-                            bandIndex,
-                            band
-                        )
-                    }
-                }
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error DEQ sesión $sessionId: ${e.message}"
-                )
-            }
-        }
-    }
-
-    fun isDEQEnabled(): Boolean =
-        isDEQActive
-
-    fun setDEQSensitivity(
-        sens: Float
-    ) {
-        deqSensitivity =
-            sens
-    }
-
-    fun getDEQSensitivity(): Float =
-        deqSensitivity
-
-    @Synchronized
-    fun setMDRCThreshold(
-        band: Int,
-        threshold: Float
-    ) {
-
-        if (band !in 0..2) return
-
-        mdrcThresholds[band] =
-            threshold
-
-        activeEffects.forEach { (sessionId, effect) ->
-
-            try {
-
-                val bandCount =
-                    effect.config.mbcBandCount
-
-                if (band < bandCount) {
-
-                    for (channelIndex in 0..1) {
-
-                        val mbcBand =
-                            effect.getMbcBandByChannelIndex(
-                                channelIndex,
-                                band
-                            )
-
-                        mbcBand.threshold =
-                            threshold
-
-                        effect.setMbcBandByChannelIndex(
-                            channelIndex,
-                            band,
-                            mbcBand
-                        )
-                    }
-
-                    Log.d(
-                        TAG,
-                        "MDRC $band = $threshold dB"
-                    )
-                }
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error MDRC: ${e.message}"
-                )
-            }
-        }
-    }
-
-    fun getCurrentBandGains(): FloatArray =
-        currentBandGains.clone()
-
-    fun isLimiterEnabled(): Boolean =
-        isLimiterActive
-
-    fun getActiveSessionCount(): Int =
-        activeEffects.size
-
-    private fun updateNotification() {
-
-        val manager =
-            getSystemService(
-                Context.NOTIFICATION_SERVICE
-            ) as NotificationManager
-
-        manager.notify(
-            NOTIFICATION_ID,
-            buildOngoingNotification()
-        )
-    }
-
-    private fun acquireWakeLock() {
-
-        try {
-
-            val powerManager =
-                getSystemService(
-                    Context.POWER_SERVICE
-                ) as PowerManager
-
-            wakeLock =
-                powerManager.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "WaveEQ:AudioEngineWakeLock"
-                ).apply {
-
-                    setReferenceCounted(false)
-
-                    acquire(
-                        12 * 60 * 60 * 1000L
-                    )
-                }
-
-        } catch (e: Exception) {
-
-            Log.w(
-                TAG,
-                "No se pudo adquirir WakeLock: ${e.message}"
-            )
-        }
-    }
-
-    private fun releaseWakeLock() {
-
-        try {
-
-            wakeLock?.let {
-
-                if (it.isHeld) {
-                    it.release()
-                }
-            }
-
-        } catch (e: Exception) {
-
-            Log.w(
-                TAG,
-                "Error liberando WakeLock: ${e.message}"
-            )
-        }
-    }
-
-    override fun onDestroy() {
-
-        Log.w(
-            TAG,
-            "Destruyendo AudioEQService"
-        )
-
-        activeEffects.forEach { (_, effect) ->
-
-            try {
-
-                effect.enabled = false
-                effect.release()
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "Error liberando DynamicsProcessing: ${e.message}"
-                )
-            }
-        }
-
-        activeEffects.clear()
-
-        releaseWakeLock()
-
-        super.onDestroy()
-    }
-}
+                    in 0

@@ -70,9 +70,8 @@ dependencies {
     // Corrutinas para procesamiento asíncrono
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 
-    // Soporte para procesamiento de audio y servicios en primer plano
+    // Soporte para procesamiento de audio (existente y válido)
     implementation 'androidx.media:media:1.7.0'
-    implementation 'androidx.core:core-foreground-service:1.1.1'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'

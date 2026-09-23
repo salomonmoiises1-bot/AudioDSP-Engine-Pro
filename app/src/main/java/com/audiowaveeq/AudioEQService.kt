@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Características críticas:
  * - START_STICKY para garantizar persistencia y recuperación automática ante muerte por baja memoria (OOM).
- * - Foreground Service con tipo FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING obligatorio en API 34.
+ * - Foreground Service con tipo FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK obligatorio en API 34.
  * - DynamicsProcessing con 32 bandas PEQ explícitas (20Hz a 20kHz).
  * - Limitador Dinámico integrado (Ataque: 1.0f ms, Umbral: -0.5f dB).
  * - Soporte para sesión global (0) y sesiones específicas de terceros (Spotify, YouTube, AIMP, etc.).
@@ -177,7 +177,7 @@ class AudioEQService : Service() {
 
     /**
      * Eleva el servicio a Foreground Service cumpliendo con los requisitos de Android 14 (API 34).
-     * RESTRICCIÓN TÉCNICA 5: FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+     * RESTRICCIÓN TÉCNICA 5: FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
      */
     private fun promoteToForegroundService() {
         val notification = buildOngoingNotification()
@@ -187,9 +187,9 @@ class AudioEQService : Service() {
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 )
-                Log.d(TAG, "Foreground Service iniciado con tipo: FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING")
+                Log.d(TAG, "Foreground Service iniciado con tipo: FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK")
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { // Android 10-13 (API 29-33)
                 startForeground(
                     NOTIFICATION_ID,

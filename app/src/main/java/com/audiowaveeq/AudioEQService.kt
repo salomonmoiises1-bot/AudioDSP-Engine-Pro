@@ -22,7 +22,9 @@ class AudioEQService : Service() {
 
         private const val TAG = "WaveEQ_AudioEQService"
 
-        const val CHANNEL_ID = "waveeq_audio_engine_channel"
+        const val CHANNEL_ID =
+            "waveeq_audio_engine_channel"
+
         const val NOTIFICATION_ID = 40401
 
         const val ACTION_START_SERVICE =
@@ -74,7 +76,7 @@ class AudioEQService : Service() {
             "com.audiowaveeq.EXTRA_LIMITER_ENABLED"
 
         const val EXTRA_EQ_ENABLED =
-            "com.audiowaveeq.EXTRA_EQ_ENABLED
+            "com.audiowaveeq.EXTRA_EQ_ENABLED"
 
         const val EXTRA_MDRC_BAND =
             "com.audiowaveeq.EXTRA_MDRC_BAND"
@@ -85,8 +87,13 @@ class AudioEQService : Service() {
         const val TOTAL_PEQ_BANDS = 32
 
         /*
-         * AudioEffect utiliza la sesión 0 como sesión
-         * del output mix.
+         * AudioEffect utiliza la sesión 0 para el output mix.
+         *
+         * Importante:
+         * El valor 0 no garantiza por sí mismo que Android
+         * entregue todo el audio de todas las aplicaciones
+         * a este efecto. Eso depende de la implementación
+         * de audio del dispositivo.
          */
         const val GLOBAL_AUDIO_SESSION_ID = 0
 
@@ -111,11 +118,10 @@ class AudioEQService : Service() {
         private const val LIMITER_POST_GAIN_DB = 0.0f
 
         /*
-         * 32 bandas ISO/IEC aproximadamente.
+         * 32 bandas de ecualización.
          *
-         * Estas frecuencias son las que utiliza directamente
-         * DynamicsProcessing. No se hace ningún redondeo
-         * posterior en setBandGain().
+         * Se mantienen exactamente estas frecuencias para que
+         * la interfaz pueda trabajar con el mismo índice de banda.
          */
         val EQ_FREQUENCIES = floatArrayOf(
             20.0f,
@@ -158,13 +164,13 @@ class AudioEQService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
 
     /*
-     * Una instancia DynamicsProcessing por sesión.
+     * Efectos actualmente asociados a sesiones de audio.
      */
     private val activeEffects =
         ConcurrentHashMap<Int, DynamicsProcessing>()
 
     /*
-     * Estado real de las 32 bandas.
+     * Estado persistente de las 32 bandas.
      */
     private val currentBandGains =
         FloatArray(TOTAL_PEQ_BANDS) { 0.0f }
@@ -176,6 +182,13 @@ class AudioEQService : Service() {
 
     private var deqSensitivity = 1.0f
 
+    /*
+     * MDRC de 3 bandas:
+     *
+     * 0 = graves
+     * 1 = medios
+     * 2 = agudos
+     */
     private val mdrcThresholds =
         floatArrayOf(
             -14.0f,
@@ -199,8 +212,9 @@ class AudioEQService : Service() {
 
     inner class LocalBinder : Binder() {
 
-        fun getService(): AudioEQService =
-            this@AudioEQService
+        fun getService(): AudioEQService {
+            return this@AudioEQService
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder {
@@ -217,12 +231,14 @@ class AudioEQService : Service() {
                     "API ${Build.VERSION.SDK_INT}"
         )
 
-        acquireWakeLock()
         createNotificationChannel()
         promoteToForegroundService()
 
         /*
-         * Crear el efecto inicialmente sobre el output mix.
+         * No se crea ningún efecto de micrófono.
+         *
+         * La sesión 0 se utiliza como punto de entrada
+         * del output mix cuando el dispositivo lo permite.
          */
         attachOrUpdateSession(
             GLOBAL_AUDIO_SESSION_ID,
@@ -262,8 +278,9 @@ class AudioEQService : Service() {
             )
 
         val callingPackage =
-            intent.getStringExtra(EXTRA_CALLING_PACKAGE)
-                ?: "unknown"
+            intent.getStringExtra(
+                EXTRA_CALLING_PACKAGE
+            ) ?: "unknown"
 
         Log.d(
             TAG,
@@ -287,10 +304,6 @@ class AudioEQService : Service() {
 
             ACTION_CLOSE_SESSION -> {
 
-                /*
-                 * La sesión 0 representa el output mix.
-                 * No se elimina mediante CLOSE_SESSION.
-                 */
                 if (sessionId != GLOBAL_AUDIO_SESSION_ID) {
                     detachSession(sessionId)
                 }
@@ -416,12 +429,12 @@ class AudioEQService : Service() {
             )
 
         val pendingIntent =
-            launchIntent?.let {
+            launchIntent?.let { intent ->
 
                 PendingIntent.getActivity(
                     this,
                     0,
-                    it,
+                    intent,
                     PendingIntent.FLAG_IMMUTABLE or
                             PendingIntent.FLAG_UPDATE_CURRENT
                 )
@@ -442,9 +455,7 @@ class AudioEQService : Service() {
             }
 
         return builder
-            .setContentTitle(
-                "WaveEQ"
-            )
+            .setContentTitle("WaveEQ")
             .setContentText(
                 "Ecualizador activo • " +
                         "$TOTAL_PEQ_BANDS bandas"
@@ -499,12 +510,12 @@ class AudioEQService : Service() {
     }
 
     /**
-     * Construye DynamicsProcessing con:
+     * Construye el pipeline de DynamicsProcessing:
      *
      * Pre-EQ  = 32 bandas
      * MBC     = 3 bandas
      * Post-EQ = 3 bandas
-     * Limiter = activo/configurable
+     * Limiter = 1 por canal
      */
     private fun createDynamicsProcessingConfig():
             DynamicsProcessing.Config {
@@ -528,6 +539,11 @@ class AudioEQService : Service() {
 
         for (channelIndex in 0 until CHANNEL_COUNT) {
 
+            /*
+             * ============================
+             * PRE-EQ: 32 BANDAS
+             * ============================
+             */
             val preEq =
                 DynamicsProcessing.Eq(
                     true,
@@ -547,6 +563,11 @@ class AudioEQService : Service() {
                 )
             }
 
+            /*
+             * ============================
+             * MDRC / MBC
+             * ============================
+             */
             val mbc =
                 DynamicsProcessing.Mbc(
                     true,
@@ -605,6 +626,11 @@ class AudioEQService : Service() {
                 )
             )
 
+            /*
+             * ============================
+             * POST EQ / DEQ
+             * ============================
+             */
             val postEq =
                 DynamicsProcessing.Eq(
                     true,
@@ -639,6 +665,11 @@ class AudioEQService : Service() {
                 )
             )
 
+            /*
+             * ============================
+             * LIMITER
+             * ============================
+             */
             val limiter =
                 DynamicsProcessing.Limiter(
                     true,
@@ -651,6 +682,11 @@ class AudioEQService : Service() {
                     LIMITER_POST_GAIN_DB
                 )
 
+            /*
+             * ============================
+             * CHANNEL
+             * ============================
+             */
             val channel =
                 DynamicsProcessing.Channel(
                     0.0f,
@@ -687,9 +723,6 @@ class AudioEQService : Service() {
         callingPackage: String
     ) {
 
-        /*
-         * Si ya existe, simplemente se asegura que esté activo.
-         */
         val existing =
             activeEffects[sessionId]
 
@@ -732,8 +765,8 @@ class AudioEQService : Service() {
                 )
 
             /*
-             * Primero se configura todo.
-             * Después se habilita.
+             * Configurar primero.
+             * Activar después.
              */
             effect.enabled = false
 
@@ -748,7 +781,7 @@ class AudioEQService : Service() {
 
             Log.i(
                 TAG,
-                "DynamicsProcessing activo " +
+                "DynamicsProcessing creado " +
                         "session=$sessionId"
             )
 
@@ -841,7 +874,7 @@ class AudioEQService : Service() {
                     TAG,
                     "Error aplicando banda " +
                             "$bandIndex ($frequency Hz) " +
-                            "sesión=$sessionId",
+                            "session=$sessionId",
                     e
                 )
             }
@@ -954,13 +987,6 @@ class AudioEQService : Service() {
 
             try {
 
-                val bandCount =
-                    effect.config.limiterInUse
-
-                /*
-                 * DynamicsProcessing mantiene un limiter
-                 * por canal.
-                 */
                 for (
                     channelIndex
                     in 0 until CHANNEL_COUNT
@@ -1010,7 +1036,10 @@ class AudioEQService : Service() {
                         effect.config.mbcBandCount
                     )
 
-                for (bandIndex in 0 until count) {
+                for (
+                    bandIndex
+                    in 0 until count
+                ) {
 
                     for (
                         channelIndex
@@ -1202,7 +1231,10 @@ class AudioEQService : Service() {
                         effect.config.postEqBandCount
                     )
 
-                for (bandIndex in 0 until count) {
+                for (
+                    bandIndex
+                    in 0 until count
+                ) {
 
                     for (
                         channelIndex
@@ -1238,6 +1270,7 @@ class AudioEQService : Service() {
         }
     }
 
+    @Synchronized
     fun setDEQSensitivity(
         sensitivity: Float
     ) {
@@ -1249,29 +1282,37 @@ class AudioEQService : Service() {
             )
     }
 
-    fun isEQActive(): Boolean =
-        isGlobalEQActive
+    fun isEQActive(): Boolean {
+        return isGlobalEQActive
+    }
 
-    fun isLimiterActive(): Boolean =
-        isLimiterActive
+    fun isLimiterActive(): Boolean {
+        return isLimiterActive
+    }
 
-    fun isLimiterEnabled(): Boolean =
-        isLimiterActive
+    fun isLimiterEnabled(): Boolean {
+        return isLimiterActive
+    }
 
-    fun isMDRCEnabled(): Boolean =
-        isMDRCActive
+    fun isMDRCEnabled(): Boolean {
+        return isMDRCActive
+    }
 
-    fun isDEQEnabled(): Boolean =
-        isDEQActive
+    fun isDEQEnabled(): Boolean {
+        return isDEQActive
+    }
 
-    fun getDEQSensitivity(): Float =
-        deqSensitivity
+    fun getDEQSensitivity(): Float {
+        return deqSensitivity
+    }
 
-    fun getAllBandGains(): FloatArray =
-        currentBandGains.clone()
+    fun getAllBandGains(): FloatArray {
+        return currentBandGains.clone()
+    }
 
-    fun getCurrentBandGains(): FloatArray =
-        currentBandGains.clone()
+    fun getCurrentBandGains(): FloatArray {
+        return currentBandGains.clone()
+    }
 
     fun getMDRCThreshold(
         band: Int
@@ -1306,8 +1347,9 @@ class AudioEQService : Service() {
         }
     }
 
-    fun getActiveSessionCount(): Int =
-        activeEffects.size
+    fun getActiveSessionCount(): Int {
+        return activeEffects.size
+    }
 
     private fun updateNotification() {
 
@@ -1322,6 +1364,12 @@ class AudioEQService : Service() {
         )
     }
 
+    /*
+     * El procesamiento de audio no necesita un WakeLock
+     * permanente de 12 horas. Android mantiene el servicio
+     * foreground mientras corresponda.
+     */
+    @Suppress("UNUSED")
     private fun acquireWakeLock() {
 
         try {
@@ -1340,7 +1388,7 @@ class AudioEQService : Service() {
                     setReferenceCounted(false)
 
                     acquire(
-                        12 * 60 * 60 * 1000L
+                        30 * 60 * 1000L
                     )
                 }
 
@@ -1358,10 +1406,10 @@ class AudioEQService : Service() {
 
         try {
 
-            wakeLock?.let {
+            wakeLock?.let { lock ->
 
-                if (it.isHeld) {
-                    it.release()
+                if (lock.isHeld) {
+                    lock.release()
                 }
             }
 

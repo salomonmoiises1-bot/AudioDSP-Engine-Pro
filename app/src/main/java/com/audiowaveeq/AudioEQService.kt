@@ -24,26 +24,45 @@ class AudioEQService : Service() {
         const val CHANNEL_ID = "waveeq_audio_engine_channel"
         const val NOTIFICATION_ID = 40401
 
-        const val ACTION_START_SERVICE = "com.audiowaveeq.ACTION_START_SERVICE"
-        const val ACTION_BOOT_START = "com.audiowaveeq.ACTION_BOOT_START"
-        const val ACTION_ENSURE_ACTIVE = "com.audiowaveeq.ACTION_ENSURE_ACTIVE"
-        const val ACTION_OPEN_SESSION = "com.audiowaveeq.ACTION_OPEN_SESSION"
-        const val ACTION_CLOSE_SESSION = "com.audiowaveeq.ACTION_CLOSE_SESSION"
-        const val ACTION_SET_BAND_GAIN = "com.audiowaveeq.ACTION_SET_BAND_GAIN"
-        const val ACTION_SET_ALL_BANDS = "com.audiowaveeq.ACTION_SET_ALL_BANDS"
-        const val ACTION_SET_LIMITER_ENABLED = "com.audiowaveeq.ACTION_SET_LIMITER_ENABLED"
-        const val ACTION_TOGGLE_EQ = "com.audiowaveeq.ACTION_TOGGLE_EQ"
-        const val ACTION_SET_MDRC_THRESHOLD = "com.audiowaveeq.ACTION_SET_MDRC_THRESHOLD"
+        const val ACTION_START_SERVICE =
+            "com.audiowaveeq.ACTION_START_SERVICE"
+        const val ACTION_BOOT_START =
+            "com.audiowaveeq.ACTION_BOOT_START"
+        const val ACTION_ENSURE_ACTIVE =
+            "com.audiowaveeq.ACTION_ENSURE_ACTIVE"
+        const val ACTION_OPEN_SESSION =
+            "com.audiowaveeq.ACTION_OPEN_SESSION"
+        const val ACTION_CLOSE_SESSION =
+            "com.audiowaveeq.ACTION_CLOSE_SESSION"
+        const val ACTION_SET_BAND_GAIN =
+            "com.audiowaveeq.ACTION_SET_BAND_GAIN"
+        const val ACTION_SET_ALL_BANDS =
+            "com.audiowaveeq.ACTION_SET_ALL_BANDS"
+        const val ACTION_SET_LIMITER_ENABLED =
+            "com.audiowaveeq.ACTION_SET_LIMITER_ENABLED"
+        const val ACTION_TOGGLE_EQ =
+            "com.audiowaveeq.ACTION_TOGGLE_EQ"
+        const val ACTION_SET_MDRC_THRESHOLD =
+            "com.audiowaveeq.ACTION_SET_MDRC_THRESHOLD"
 
-        const val EXTRA_SESSION_ID = "com.audiowaveeq.EXTRA_SESSION_ID"
-        const val EXTRA_CALLING_PACKAGE = "com.audiowaveeq.EXTRA_CALLING_PACKAGE"
-        const val EXTRA_BAND_INDEX = "com.audiowaveeq.EXTRA_BAND_INDEX"
-        const val EXTRA_BAND_GAIN = "com.audiowaveeq.EXTRA_BAND_GAIN"
-        const val EXTRA_ALL_GAINS = "com.audiowaveeq.EXTRA_ALL_GAINS"
-        const val EXTRA_LIMITER_ENABLED = "com.audiowaveeq.EXTRA_LIMITER_ENABLED"
-        const val EXTRA_EQ_ENABLED = "com.audiowaveeq.EXTRA_EQ_ENABLED"
-        const val EXTRA_MDRC_BAND = "com.audiowaveeq.EXTRA_MDRC_BAND"
-        const val EXTRA_MDRC_THRESHOLD = "com.audiowaveeq.EXTRA_MDRC_THRESHOLD"
+        const val EXTRA_SESSION_ID =
+            "com.audiowaveeq.EXTRA_SESSION_ID"
+        const val EXTRA_CALLING_PACKAGE =
+            "com.audiowaveeq.EXTRA_CALLING_PACKAGE"
+        const val EXTRA_BAND_INDEX =
+            "com.audiowaveeq.EXTRA_BAND_INDEX"
+        const val EXTRA_BAND_GAIN =
+            "com.audiowaveeq.EXTRA_BAND_GAIN"
+        const val EXTRA_ALL_GAINS =
+            "com.audiowaveeq.EXTRA_ALL_GAINS"
+        const val EXTRA_LIMITER_ENABLED =
+            "com.audiowaveeq.EXTRA_LIMITER_ENABLED"
+        const val EXTRA_EQ_ENABLED =
+            "com.audiowaveeq.EXTRA_EQ_ENABLED"
+        const val EXTRA_MDRC_BAND =
+            "com.audiowaveeq.EXTRA_MDRC_BAND"
+        const val EXTRA_MDRC_THRESHOLD =
+            "com.audiowaveeq.EXTRA_MDRC_THRESHOLD"
 
         const val TOTAL_PEQ_BANDS = 32
         const val GLOBAL_AUDIO_SESSION_ID = 0
@@ -91,6 +110,7 @@ class AudioEQService : Service() {
     }
 
     private val binder = LocalBinder()
+
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val activeEffects =
@@ -101,7 +121,6 @@ class AudioEQService : Service() {
 
     private var isGlobalEQActive = true
     private var isLimiterActive = true
-
     private var isMDRCActive = true
 
     private val mdrcThresholds =
@@ -155,10 +174,11 @@ class AudioEQService : Service() {
 
             val action = intent.action
 
-            val sessionId = intent.getIntExtra(
-                EXTRA_SESSION_ID,
-                GLOBAL_AUDIO_SESSION_ID
-            )
+            val sessionId =
+                intent.getIntExtra(
+                    EXTRA_SESSION_ID,
+                    GLOBAL_AUDIO_SESSION_ID
+                )
 
             val callingPackage =
                 intent.getStringExtra(EXTRA_CALLING_PACKAGE)
@@ -189,10 +209,16 @@ class AudioEQService : Service() {
                 ACTION_SET_BAND_GAIN -> {
 
                     val bandIndex =
-                        intent.getIntExtra(EXTRA_BAND_INDEX, -1)
+                        intent.getIntExtra(
+                            EXTRA_BAND_INDEX,
+                            -1
+                        )
 
                     val gain =
-                        intent.getFloatExtra(EXTRA_BAND_GAIN, 0.0f)
+                        intent.getFloatExtra(
+                            EXTRA_BAND_GAIN,
+                            0.0f
+                        )
 
                     if (bandIndex in 0 until TOTAL_PEQ_BANDS) {
                         setBandGain(
@@ -205,7 +231,9 @@ class AudioEQService : Service() {
                 ACTION_SET_ALL_BANDS -> {
 
                     val gains =
-                        intent.getFloatArrayExtra(EXTRA_ALL_GAINS)
+                        intent.getFloatArrayExtra(
+                            EXTRA_ALL_GAINS
+                        )
 
                     if (
                         gains != null &&
@@ -281,21 +309,7 @@ class AudioEQService : Service() {
 
         try {
 
-            if (
-                Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.UPSIDE_DOWN_CAKE
-            ) {
-
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
-                )
-
-            } else if (
-                Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.Q
-            ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
                 startForeground(
                     NOTIFICATION_ID,
@@ -408,6 +422,14 @@ class AudioEQService : Service() {
         }
     }
 
+    /**
+     * Construye la configuración de DynamicsProcessing
+     * utilizando la API oficial de Android:
+     *
+     * Builder -> Channel -> Eq / Mbc / Limiter
+     *
+     * El Builder no configura bandas directamente.
+     */
     private fun createDynamicsProcessingConfig():
             DynamicsProcessing.Config {
 
@@ -426,194 +448,153 @@ class AudioEQService : Service() {
                 true
             )
 
-        /*
-         * 32 bandas PEQ.
-         *
-         * Las frecuencias se mantienen explícitas y en el mismo
-         * orden que utiliza la interfaz.
-         */
+        for (channelIndex in 0 until channelCount) {
 
-        for (band in 0 until TOTAL_PEQ_BANDS) {
-
-            val eqBand =
-                DynamicsProcessing.EqBand(
+            val preEq =
+                DynamicsProcessing.Eq(
                     true,
-                    EQ_FREQUENCIES[band],
-                    currentBandGains[band]
+                    true,
+                    TOTAL_PEQ_BANDS
                 )
 
-            builder.setPreEqBand(
+            for (bandIndex in 0 until TOTAL_PEQ_BANDS) {
+
+                preEq.setBand(
+                    bandIndex,
+                    DynamicsProcessing.EqBand(
+                        true,
+                        EQ_FREQUENCIES[bandIndex],
+                        currentBandGains[bandIndex]
+                    )
+                )
+            }
+
+            val mbc =
+                DynamicsProcessing.Mbc(
+                    true,
+                    isMDRCActive,
+                    3
+                )
+
+            mbc.setBand(
                 0,
-                band,
-                eqBand
+                DynamicsProcessing.MbcBand(
+                    isMDRCActive,
+                    200.0f,
+                    15.0f,
+                    100.0f,
+                    mdrcRatios[0],
+                    mdrcThresholds[0],
+                    4.0f,
+                    -90.0f,
+                    1.0f,
+                    0.0f,
+                    mdrcGains[0]
+                )
             )
 
-            builder.setPreEqBand(
+            mbc.setBand(
                 1,
-                band,
-                DynamicsProcessing.EqBand(
-                    true,
-                    EQ_FREQUENCIES[band],
-                    currentBandGains[band]
+                DynamicsProcessing.MbcBand(
+                    isMDRCActive,
+                    3000.0f,
+                    20.0f,
+                    80.0f,
+                    mdrcRatios[1],
+                    mdrcThresholds[1],
+                    3.0f,
+                    -90.0f,
+                    1.0f,
+                    0.0f,
+                    mdrcGains[1]
                 )
+            )
+
+            mbc.setBand(
+                2,
+                DynamicsProcessing.MbcBand(
+                    isMDRCActive,
+                    20000.0f,
+                    10.0f,
+                    60.0f,
+                    mdrcRatios[2],
+                    mdrcThresholds[2],
+                    2.0f,
+                    -90.0f,
+                    1.0f,
+                    0.0f,
+                    mdrcGains[2]
+                )
+            )
+
+            val postEq =
+                DynamicsProcessing.Eq(
+                    true,
+                    true,
+                    3
+                )
+
+            postEq.setBand(
+                0,
+                DynamicsProcessing.EqBand(
+                    isDEQActive,
+                    100.0f,
+                    0.0f
+                )
+            )
+
+            postEq.setBand(
+                1,
+                DynamicsProcessing.EqBand(
+                    isDEQActive,
+                    1000.0f,
+                    0.0f
+                )
+            )
+
+            postEq.setBand(
+                2,
+                DynamicsProcessing.EqBand(
+                    isDEQActive,
+                    10000.0f,
+                    0.0f
+                )
+            )
+
+            val limiter =
+                DynamicsProcessing.Limiter(
+                    true,
+                    isLimiterActive,
+                    0,
+                    LIMITER_ATTACK_TIME_MS,
+                    LIMITER_RELEASE_TIME_MS,
+                    LIMITER_RATIO,
+                    LIMITER_THRESHOLD_DB,
+                    LIMITER_POST_GAIN_DB
+                )
+
+            val channel =
+                DynamicsProcessing.Channel(
+                    0.0f,
+                    true,
+                    TOTAL_PEQ_BANDS,
+                    true,
+                    3,
+                    true,
+                    3,
+                    true
+                )
+
+            channel.setPreEq(preEq)
+            channel.setMbc(mbc)
+            channel.setPostEq(postEq)
+            channel.setLimiter(limiter)
+
+            builder.setChannelTo(
+                channelIndex,
+                channel
             )
         }
-
-        val mbcBass =
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                200.0f,
-                15.0f,
-                100.0f,
-                mdrcRatios[0],
-                mdrcThresholds[0],
-                4.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[0]
-            )
-
-        builder.setMbcBand(
-            0,
-            0,
-            mbcBass
-        )
-
-        builder.setMbcBand(
-            1,
-            0,
-            mbcBass
-        )
-
-        val mbcMids =
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                3000.0f,
-                20.0f,
-                80.0f,
-                mdrcRatios[1],
-                mdrcThresholds[1],
-                3.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[1]
-            )
-
-        builder.setMbcBand(
-            0,
-            1,
-            mbcMids
-        )
-
-        builder.setMbcBand(
-            1,
-            1,
-            mbcMids
-        )
-
-        val mbcHighs =
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                20000.0f,
-                10.0f,
-                60.0f,
-                mdrcRatios[2],
-                mdrcThresholds[2],
-                2.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[2]
-            )
-
-        builder.setMbcBand(
-            0,
-            2,
-            mbcHighs
-        )
-
-        builder.setMbcBand(
-            1,
-            2,
-            mbcHighs
-        )
-
-        builder.setPostEqBand(
-            0,
-            0,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                100.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqBand(
-            1,
-            0,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                100.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqBand(
-            0,
-            1,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                1000.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqBand(
-            1,
-            1,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                1000.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqBand(
-            0,
-            2,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                10000.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqBand(
-            1,
-            2,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                10000.0f,
-                0.0f
-            )
-        )
-
-        val limiter =
-            DynamicsProcessing.Limiter(
-                true,
-                isLimiterActive,
-                0,
-                LIMITER_ATTACK_TIME_MS,
-                LIMITER_RELEASE_TIME_MS,
-                LIMITER_RATIO,
-                LIMITER_THRESHOLD_DB,
-                LIMITER_POST_GAIN_DB
-            )
-
-        builder.setLimiterInUse(true)
-        builder.setLimiterAllChannelsTo(limiter)
 
         return builder.build()
     }
@@ -633,7 +614,7 @@ class AudioEQService : Service() {
 
                 if (
                     existing != null &&
-                    !existing.enabled
+                    !existing.isEnabled
                 ) {
                     existing.enabled = true
                 }
@@ -657,7 +638,8 @@ class AudioEQService : Service() {
                     config
                 )
 
-            effect.enabled = true
+            effect.enabled =
+                isGlobalEQActive
 
             activeEffects[sessionId] =
                 effect
@@ -706,22 +688,6 @@ class AudioEQService : Service() {
         }
     }
 
-    /*
-     * ============================================================
-     * 32 BANDAS — CAMBIO PRINCIPAL
-     * ============================================================
-     *
-     * En lugar de modificar L y R por separado mediante:
-     *
-     * get -> modificar -> set
-     *
-     * usamos directamente la operación oficial:
-     *
-     * setPreEqBandAllChannelsTo()
-     *
-     * Así la misma EqBand se aplica a todos los canales.
-     */
-
     @Synchronized
     fun setBandGain(
         bandIndex: Int,
@@ -729,8 +695,7 @@ class AudioEQService : Service() {
     ) {
 
         if (
-            bandIndex !in
-            0 until TOTAL_PEQ_BANDS
+            bandIndex !in 0 until TOTAL_PEQ_BANDS
         ) {
             Log.e(
                 TAG,
@@ -858,25 +823,21 @@ class AudioEQService : Service() {
 
             try {
 
-                val left =
-                    effect.getLimiterByChannelIndex(0)
+                for (channelIndex in 0..1) {
 
-                left.enabled = enabled
+                    val limiter =
+                        effect.getLimiterByChannelIndex(
+                            channelIndex
+                        )
 
-                effect.setLimiterByChannelIndex(
-                    0,
-                    left
-                )
+                    limiter.enabled =
+                        enabled
 
-                val right =
-                    effect.getLimiterByChannelIndex(1)
-
-                right.enabled = enabled
-
-                effect.setLimiterByChannelIndex(
-                    1,
-                    right
-                )
+                    effect.setLimiterByChannelIndex(
+                        channelIndex,
+                        limiter
+                    )
+                }
 
             } catch (e: Exception) {
 
@@ -899,7 +860,8 @@ class AudioEQService : Service() {
         activeEffects.forEach { (_, effect) ->
 
             try {
-                effect.enabled = enabled
+                effect.enabled =
+                    enabled
             } catch (e: Exception) {
                 Log.w(
                     TAG,
@@ -932,40 +894,32 @@ class AudioEQService : Service() {
 
             try {
 
-                for (b in 0 until 3) {
+                val config =
+                    effect.config
 
-                    if (
-                        effect.mbcBandCount > b
-                    ) {
+                val bandCount =
+                    config.mbcBandCount
 
-                        val left =
+                for (
+                    bandIndex
+                    in 0 until minOf(3, bandCount)
+                ) {
+
+                    for (channelIndex in 0..1) {
+
+                        val band =
                             effect.getMbcBandByChannelIndex(
-                                0,
-                                b
+                                channelIndex,
+                                bandIndex
                             )
 
-                        left.enabled =
+                        band.enabled =
                             enabled
 
                         effect.setMbcBandByChannelIndex(
-                            0,
-                            b,
-                            left
-                        )
-
-                        val right =
-                            effect.getMbcBandByChannelIndex(
-                                1,
-                                b
-                            )
-
-                        right.enabled =
-                            enabled
-
-                        effect.setMbcBandByChannelIndex(
-                            1,
-                            b,
-                            right
+                            channelIndex,
+                            bandIndex,
+                            band
                         )
                     }
                 }
@@ -1006,51 +960,34 @@ class AudioEQService : Service() {
 
             try {
 
-                if (
-                    effect.mbcBandCount > band
-                ) {
+                val bandCount =
+                    effect.config.mbcBandCount
 
-                    val left =
-                        effect.getMbcBandByChannelIndex(
-                            0,
-                            band
+                if (band < bandCount) {
+
+                    for (channelIndex in 0..1) {
+
+                        val mbcBand =
+                            effect.getMbcBandByChannelIndex(
+                                channelIndex,
+                                band
+                            )
+
+                        mbcBand.threshold =
+                            threshold
+
+                        mbcBand.ratio =
+                            ratio
+
+                        mbcBand.postGain =
+                            postGain
+
+                        effect.setMbcBandByChannelIndex(
+                            channelIndex,
+                            band,
+                            mbcBand
                         )
-
-                    left.threshold =
-                        threshold
-
-                    left.ratio =
-                        ratio
-
-                    left.postGain =
-                        postGain
-
-                    effect.setMbcBandByChannelIndex(
-                        0,
-                        band,
-                        left
-                    )
-
-                    val right =
-                        effect.getMbcBandByChannelIndex(
-                            1,
-                            band
-                        )
-
-                    right.threshold =
-                        threshold
-
-                    right.ratio =
-                        ratio
-
-                    right.postGain =
-                        postGain
-
-                    effect.setMbcBandByChannelIndex(
-                        1,
-                        band,
-                        right
-                    )
+                    }
                 }
 
             } catch (e: Exception) {
@@ -1095,44 +1032,33 @@ class AudioEQService : Service() {
         isDEQActive =
             enabled
 
-        activeEffects.forEach { (_, effect) ->
+        activeEffects.forEach { (sessionId, effect) ->
 
             try {
 
-                for (b in 0 until 3) {
+                val bandCount =
+                    effect.config.postEqBandCount
 
-                    if (
-                        effect.postEqBandCount > b
-                    ) {
+                for (
+                    bandIndex
+                    in 0 until minOf(3, bandCount)
+                ) {
 
-                        val left =
+                    for (channelIndex in 0..1) {
+
+                        val band =
                             effect.getPostEqBandByChannelIndex(
-                                0,
-                                b
+                                channelIndex,
+                                bandIndex
                             )
 
-                        left.enabled =
+                        band.enabled =
                             enabled
 
                         effect.setPostEqBandByChannelIndex(
-                            0,
-                            b,
-                            left
-                        )
-
-                        val right =
-                            effect.getPostEqBandByChannelIndex(
-                                1,
-                                b
-                            )
-
-                        right.enabled =
-                            enabled
-
-                        effect.setPostEqBandByChannelIndex(
-                            1,
-                            b,
-                            right
+                            channelIndex,
+                            bandIndex,
+                            band
                         )
                     }
                 }
@@ -1141,7 +1067,7 @@ class AudioEQService : Service() {
 
                 Log.w(
                     TAG,
-                    "Error DEQ: ${e.message}"
+                    "Error DEQ sesión $sessionId: ${e.message}"
                 )
             }
         }
@@ -1175,39 +1101,28 @@ class AudioEQService : Service() {
 
             try {
 
-                if (
-                    effect.mbcBandCount > band
-                ) {
+                val bandCount =
+                    effect.config.mbcBandCount
 
-                    val left =
-                        effect.getMbcBandByChannelIndex(
-                            0,
-                            band
+                if (band < bandCount) {
+
+                    for (channelIndex in 0..1) {
+
+                        val mbcBand =
+                            effect.getMbcBandByChannelIndex(
+                                channelIndex,
+                                band
+                            )
+
+                        mbcBand.threshold =
+                            threshold
+
+                        effect.setMbcBandByChannelIndex(
+                            channelIndex,
+                            band,
+                            mbcBand
                         )
-
-                    left.threshold =
-                        threshold
-
-                    effect.setMbcBandByChannelIndex(
-                        0,
-                        band,
-                        left
-                    )
-
-                    val right =
-                        effect.getMbcBandByChannelIndex(
-                            1,
-                            band
-                        )
-
-                    right.threshold =
-                        threshold
-
-                    effect.setMbcBandByChannelIndex(
-                        1,
-                        band,
-                        right
-                    )
+                    }
 
                     Log.d(
                         TAG,

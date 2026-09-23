@@ -1068,4 +1068,205 @@ class AudioEQService : Service() {
 
                 for (
                     bandIndex
-                    in 0
+                    in 0 until minOf(3, bandCount)
+                ) {
+
+                    for (channelIndex in 0..1) {
+
+                        val band =
+                            effect.getPostEqBandByChannelIndex(
+                                channelIndex,
+                                bandIndex
+                            )
+
+                        band.setEnabled(enabled)
+
+                        effect.setPostEqBandByChannelIndex(
+                            channelIndex,
+                            bandIndex,
+                            band
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
+
+                Log.w(
+                    TAG,
+                    "Error DEQ sesión $sessionId: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun isDEQEnabled(): Boolean =
+        isDEQActive
+
+    fun setDEQSensitivity(
+        sens: Float
+    ) {
+
+        deqSensitivity =
+            sens
+    }
+
+    fun getDEQSensitivity(): Float =
+        deqSensitivity
+
+    @Synchronized
+    fun setMDRCThreshold(
+        band: Int,
+        threshold: Float
+    ) {
+
+        if (band !in 0..2) return
+
+        mdrcThresholds[band] =
+            threshold
+
+        activeEffects.forEach { (sessionId, effect) ->
+
+            try {
+
+                val bandCount =
+                    effect.config.mbcBandCount
+
+                if (band < bandCount) {
+
+                    for (channelIndex in 0..1) {
+
+                        val mbcBand =
+                            effect.getMbcBandByChannelIndex(
+                                channelIndex,
+                                band
+                            )
+
+                        mbcBand.threshold =
+                            threshold
+
+                        effect.setMbcBandByChannelIndex(
+                            channelIndex,
+                            band,
+                            mbcBand
+                        )
+                    }
+
+                    Log.d(
+                        TAG,
+                        "MDRC $band = $threshold dB"
+                    )
+                }
+
+            } catch (e: Exception) {
+
+                Log.w(
+                    TAG,
+                    "Error MDRC: ${e.message}"
+                )
+            }
+        }
+    }
+
+    fun getCurrentBandGains(): FloatArray =
+        currentBandGains.clone()
+
+    fun isLimiterEnabled(): Boolean =
+        isLimiterActive
+
+    fun getActiveSessionCount(): Int =
+        activeEffects.size
+
+    private fun updateNotification() {
+
+        val manager =
+            getSystemService(
+                Context.NOTIFICATION_SERVICE
+            ) as NotificationManager
+
+        manager.notify(
+            NOTIFICATION_ID,
+            buildOngoingNotification()
+        )
+    }
+
+    private fun acquireWakeLock() {
+
+        try {
+
+            val powerManager =
+                getSystemService(
+                    Context.POWER_SERVICE
+                ) as PowerManager
+
+            wakeLock =
+                powerManager.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "WaveEQ:AudioEngineWakeLock"
+                ).apply {
+
+                    setReferenceCounted(false)
+
+                    acquire(
+                        12 * 60 * 60 * 1000L
+                    )
+                }
+
+        } catch (e: Exception) {
+
+            Log.w(
+                TAG,
+                "No se pudo adquirir WakeLock: ${e.message}"
+            )
+        }
+    }
+
+    private fun releaseWakeLock() {
+
+        try {
+
+            wakeLock?.let {
+
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+
+        } catch (e: Exception) {
+
+            Log.w(
+                TAG,
+                "Error liberando WakeLock: ${e.message}"
+            )
+        }
+    }
+
+    override fun onDestroy() {
+
+        Log.w(
+            TAG,
+            "Destruyendo AudioEQService"
+        )
+
+        activeEffects.forEach { (_, effect) ->
+
+            try {
+
+                effect.enabled = false
+                effect.release()
+
+            } catch (e: Exception) {
+
+                Log.e(
+                    TAG,
+                    "Error liberando DynamicsProcessing: ${e.message}"
+                )
+            }
+        }
+
+        activeEffects.clear()
+
+        releaseWakeLock()
+
+        super.onDestroy()
+    }
+}

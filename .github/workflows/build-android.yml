@@ -20,6 +20,12 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Install Gradle 8.7 Manually
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip -O gradle.zip
+          unzip -q gradle.zip
+          echo "$PWD/gradle-8.7/bin" >> $GITHUB_PATH
+
       - name: Accept Licenses and Install Build Tools
         run: |
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
@@ -30,8 +36,7 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

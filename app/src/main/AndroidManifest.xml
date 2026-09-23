@@ -11,9 +11,9 @@
     <!-- Notificaciones requeridas en Android 13+ (API 33) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Foreground Service obligatorio en Android 14+ (API 34) -->
+    <!-- Foreground Service obligatorio en Android 14+ (API 34) para procesamiento multimedia -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
 
     <application
         android:name=".MainApplication"
@@ -44,7 +44,7 @@
             android:name=".AudioEQService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:foregroundServiceType="mediaProcessing" />
 
         <!-- Receptor de transmisiones para sesiones de audio -->
         <receiver

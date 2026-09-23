@@ -22,9 +22,9 @@ jobs:
 
       - name: Install Modern Gradle Manually
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip -O gradle.zip
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O gradle.zip
           unzip -q gradle.zip
-          echo "$PWD/gradle-8.5/bin" >> $GITHUB_PATH
+          echo "$PWD/gradle-8.6/bin" >> $GITHUB_PATH
 
       - name: Setup Android SDK Environment Manually
         run: |

@@ -3,211 +3,137 @@ package com.audiowaveeq
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.audiofx.DynamicsProcessing
-import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * AudioEQService
- *
- * Motor de procesamiento basado en Android DynamicsProcessing.
- *
- * IMPORTANTE:
- * DynamicsProcessing trabaja sobre una AudioSession concreta.
- * La sesión 0 no garantiza procesamiento universal del audio
- * producido por todas las aplicaciones del dispositivo.
- */
 class AudioEQService : Service() {
 
     companion object {
-        private const val TAG = "WaveEQ_AudioEQService"
-
-        const val CHANNEL_ID = "waveeq_audio_engine_channel"
-        const val NOTIFICATION_ID = 40401
+        private const val TAG = "WaveEQ_Service"
 
         const val ACTION_START_SERVICE =
-            "com.audiowaveeq.ACTION_START_SERVICE"
+            "com.audiowaveeq.action.START_SERVICE"
 
         const val ACTION_BOOT_START =
-            "com.audiowaveeq.ACTION_BOOT_START"
+            "com.audiowaveeq.action.BOOT_START"
 
         const val ACTION_ENSURE_ACTIVE =
-            "com.audiowaveeq.ACTION_ENSURE_ACTIVE"
+            "com.audiowaveeq.action.ENSURE_ACTIVE"
 
         const val ACTION_OPEN_SESSION =
-            "com.audiowaveeq.ACTION_OPEN_SESSION"
+            "com.audiowaveeq.action.OPEN_SESSION"
 
         const val ACTION_CLOSE_SESSION =
-            "com.audiowaveeq.ACTION_CLOSE_SESSION"
+            "com.audiowaveeq.action.CLOSE_SESSION"
 
         const val ACTION_SET_BAND_GAIN =
-            "com.audiowaveeq.ACTION_SET_BAND_GAIN"
+            "com.audiowaveeq.action.SET_BAND_GAIN"
 
         const val ACTION_SET_ALL_BANDS =
-            "com.audiowaveeq.ACTION_SET_ALL_BANDS"
+            "com.audiowaveeq.action.SET_ALL_BANDS"
 
         const val ACTION_SET_LIMITER_ENABLED =
-            "com.audiowaveeq.ACTION_SET_LIMITER_ENABLED"
+            "com.audiowaveeq.action.SET_LIMITER_ENABLED"
 
         const val ACTION_TOGGLE_EQ =
-            "com.audiowaveeq.ACTION_TOGGLE_EQ"
+            "com.audiowaveeq.action.TOGGLE_EQ"
 
         const val ACTION_SET_MDRC_THRESHOLD =
-            "com.audiowaveeq.ACTION_SET_MDRC_THRESHOLD"
+            "com.audiowaveeq.action.SET_MDRC_THRESHOLD"
 
-        const val EXTRA_SESSION_ID =
-            "com.audiowaveeq.EXTRA_SESSION_ID"
+        const val EXTRA_AUDIO_SESSION =
+            "audio_session"
 
-        const val EXTRA_CALLING_PACKAGE =
-            "com.audiowaveeq.EXTRA_CALLING_PACKAGE"
+        const val EXTRA_PACKAGE_NAME =
+            "package_name"
 
         const val EXTRA_BAND_INDEX =
-            "com.audiowaveeq.EXTRA_BAND_INDEX"
+            "band_index"
 
         const val EXTRA_BAND_GAIN =
-            "com.audiowaveeq.EXTRA_BAND_GAIN"
+            "band_gain"
 
         const val EXTRA_ALL_GAINS =
-            "com.audiowaveeq.EXTRA_ALL_GAINS"
+            "all_gains"
 
-        const val EXTRA_LIMITER_ENABLED =
-            "com.audiowaveeq.EXTRA_LIMITER_ENABLED"
-
-        const val EXTRA_EQ_ENABLED =
-            "com.audiowaveeq.EXTRA_EQ_ENABLED"
-
-        const val EXTRA_MDRC_BAND =
-            "com.audiowaveeq.EXTRA_MDRC_BAND"
+        const val EXTRA_ENABLED =
+            "enabled"
 
         const val EXTRA_MDRC_THRESHOLD =
-            "com.audiowaveeq.EXTRA_MDRC_THRESHOLD"
+            "mdrc_threshold"
 
         const val TOTAL_PEQ_BANDS = 32
 
-        const val GLOBAL_AUDIO_SESSION_ID = 0
-
-        const val LIMITER_ATTACK_TIME_MS = 1.0f
-        const val LIMITER_RELEASE_TIME_MS = 60.0f
-        const val LIMITER_RATIO = 10.0f
-        const val LIMITER_THRESHOLD_DB = -0.5f
-        const val LIMITER_POST_GAIN_DB = 0.0f
-
-        private val PEQ_FREQUENCIES = floatArrayOf(
-            20.0f,
-            25.0f,
-            31.5f,
-            40.0f,
-            50.0f,
-            63.0f,
-            80.0f,
-            100.0f,
-            125.0f,
-            160.0f,
-            200.0f,
-            250.0f,
-            315.0f,
-            400.0f,
-            500.0f,
-            630.0f,
-            800.0f,
-            1000.0f,
-            1250.0f,
-            1600.0f,
-            2000.0f,
-            2500.0f,
-            3150.0f,
-            4000.0f,
-            5000.0f,
-            6300.0f,
-            8000.0f,
-            10000.0f,
-            12500.0f,
-            16000.0f,
-            18000.0f,
-            20000.0f
+        val PEQ_FREQUENCIES = floatArrayOf(
+            20f, 25f, 31.5f, 40f,
+            50f, 63f, 80f, 100f,
+            125f, 160f, 200f, 250f,
+            315f, 400f, 500f, 630f,
+            800f, 1000f, 1250f, 1600f,
+            2000f, 2500f, 3150f, 4000f,
+            5000f, 6300f, 8000f, 10000f,
+            12500f, 16000f, 18000f, 20000f
         )
+
+        private const val CHANNEL_COUNT = 2
+        private const val NOTIFICATION_CHANNEL = "waveeq_audio"
+
+        private const val MIN_GAIN = -15f
+        private const val MAX_GAIN = 15f
     }
 
-    private val binder = LocalBinder()
-
-    private var wakeLock: PowerManager.WakeLock? = null
-
+    /*
+     * IMPORTANTE:
+     *
+     * Ya NO usamos session 0 como supuesto "audio global".
+     *
+     * Cada DynamicsProcessing se conecta a una sesión de audio REAL
+     * recibida mediante ACTION_OPEN_SESSION.
+     */
     private val activeEffects =
         ConcurrentHashMap<Int, DynamicsProcessing>()
 
+    private val sessionPackages =
+        ConcurrentHashMap<Int, String>()
+
     private val currentBandGains =
-        FloatArray(TOTAL_PEQ_BANDS) { 0.0f }
+        FloatArray(TOTAL_PEQ_BANDS) { 0f }
 
-    private var isGlobalEQActive = true
+    @Volatile
+    private var eqEnabled = true
 
-    private var limiterActive = true
+    @Volatile
+    private var limiterEnabled = true
 
-    private var isMDRCActive = true
+    @Volatile
+    private var mdrcThreshold = -12f
 
-    private val mdrcThresholds =
-        floatArrayOf(
-            -14.0f,
-            -16.0f,
-            -18.0f
-        )
-
-    private val mdrcRatios =
-        floatArrayOf(
-            2.5f,
-            2.0f,
-            2.2f
-        )
-
-    private val mdrcGains =
-        floatArrayOf(
-            1.0f,
-            0.0f,
-            0.5f
-        )
-
-    private var isDEQActive = true
-
-    private var deqSensitivity = 1.0f
-
-    inner class LocalBinder : Binder() {
-
-        fun getService(): AudioEQService =
-            this@AudioEQService
-    }
-
-    override fun onBind(intent: Intent?): IBinder {
-        return binder
-    }
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
 
-        Log.i(
-            TAG,
-            "Iniciando AudioEQService Android " +
-                "${Build.VERSION.RELEASE} " +
-                "(API ${Build.VERSION.SDK_INT})"
-        )
+        Log.i(TAG, "WaveEQ AudioEQService iniciado")
 
         acquireWakeLock()
-
         createNotificationChannel()
+        startForegroundService()
 
-        promoteToForegroundService()
-
-        attachOrUpdateSession(
-            GLOBAL_AUDIO_SESSION_ID,
-            "android_global_mix"
-        )
+        /*
+         * NO hacemos:
+         *
+         * DynamicsProcessing(0, 0, ...)
+         *
+         * porque session 0 no representa automáticamente
+         * todo el audio del dispositivo.
+         */
     }
 
     override fun onStartCommand(
@@ -216,534 +142,118 @@ class AudioEQService : Service() {
         startId: Int
     ): Int {
 
-        promoteToForegroundService()
+        if (intent == null) {
+            return START_STICKY
+        }
 
-        if (intent != null) {
+        when (intent.action) {
 
-            val action = intent.action
+            ACTION_START_SERVICE,
+            ACTION_BOOT_START,
+            ACTION_ENSURE_ACTIVE -> {
+                Log.d(TAG, "Servicio activo; esperando sesiones de audio")
+            }
 
-            val sessionId =
-                intent.getIntExtra(
-                    EXTRA_SESSION_ID,
-                    GLOBAL_AUDIO_SESSION_ID
-                )
+            ACTION_OPEN_SESSION -> {
+                val sessionId =
+                    intent.getIntExtra(EXTRA_AUDIO_SESSION, -1)
 
-            val callingPackage =
-                intent.getStringExtra(
-                    EXTRA_CALLING_PACKAGE
-                ) ?: "unknown"
+                val packageName =
+                    intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                        ?: "unknown"
 
-            Log.d(
-                TAG,
-                "Comando recibido: $action, " +
-                    "sesión=$sessionId, " +
-                    "paquete=$callingPackage"
-            )
-
-            when (action) {
-
-                ACTION_OPEN_SESSION,
-                ACTION_ENSURE_ACTIVE,
-                ACTION_START_SERVICE,
-                ACTION_BOOT_START -> {
-
-                    attachOrUpdateSession(
-                        sessionId,
-                        callingPackage
-                    )
-                }
-
-                ACTION_CLOSE_SESSION -> {
-
-                    detachSession(sessionId)
-                }
-
-                ACTION_SET_BAND_GAIN -> {
-
-                    val bandIndex =
-                        intent.getIntExtra(
-                            EXTRA_BAND_INDEX,
-                            -1
-                        )
-
-                    val gain =
-                        intent.getFloatExtra(
-                            EXTRA_BAND_GAIN,
-                            0.0f
-                        )
-
-                    if (
-                        bandIndex in
-                        0 until TOTAL_PEQ_BANDS
-                    ) {
-
-                        setBandGain(
-                            bandIndex,
-                            gain
-                        )
-                    }
-                }
-
-                ACTION_SET_ALL_BANDS -> {
-
-                    val gains =
-                        intent.getFloatArrayExtra(
-                            EXTRA_ALL_GAINS
-                        )
-
-                    if (
-                        gains != null &&
-                        gains.size == TOTAL_PEQ_BANDS
-                    ) {
-
-                        setAllBandGains(gains)
-                    }
-                }
-
-                ACTION_SET_LIMITER_ENABLED -> {
-
-                    val enabled =
-                        intent.getBooleanExtra(
-                            EXTRA_LIMITER_ENABLED,
-                            true
-                        )
-
-                    setLimiterEnabled(enabled)
-                }
-
-                ACTION_TOGGLE_EQ -> {
-
-                    val enabled =
-                        intent.getBooleanExtra(
-                            EXTRA_EQ_ENABLED,
-                            true
-                        )
-
-                    toggleEQ(enabled)
-                }
-
-                ACTION_SET_MDRC_THRESHOLD -> {
-
-                    val band =
-                        intent.getIntExtra(
-                            EXTRA_MDRC_BAND,
-                            0
-                        )
-
-                    val threshold =
-                        intent.getFloatExtra(
-                            EXTRA_MDRC_THRESHOLD,
-                            -12.0f
-                        )
-
-                    setMDRCThreshold(
-                        band,
-                        threshold
-                    )
+                if (sessionId >= 0) {
+                    attachSession(sessionId, packageName)
                 }
             }
 
-        } else {
+            ACTION_CLOSE_SESSION -> {
+                val sessionId =
+                    intent.getIntExtra(EXTRA_AUDIO_SESSION, -1)
 
-            Log.d(
-                TAG,
-                "Servicio recreado por Android mediante START_STICKY"
-            )
+                if (sessionId >= 0) {
+                    detachSession(sessionId)
+                }
+            }
 
-            attachOrUpdateSession(
-                GLOBAL_AUDIO_SESSION_ID,
-                "system_rebound"
-            )
+            ACTION_SET_BAND_GAIN -> {
+
+                val index =
+                    intent.getIntExtra(EXTRA_BAND_INDEX, -1)
+
+                val gain =
+                    intent.getFloatExtra(EXTRA_BAND_GAIN, 0f)
+
+                if (index in 0 until TOTAL_PEQ_BANDS) {
+                    setBandGain(index, gain)
+                }
+            }
+
+            ACTION_SET_ALL_BANDS -> {
+
+                val gains =
+                    intent.getFloatArrayExtra(EXTRA_ALL_GAINS)
+
+                if (gains != null) {
+                    setAllBandGains(gains)
+                }
+            }
+
+            ACTION_TOGGLE_EQ -> {
+
+                eqEnabled =
+                    intent.getBooleanExtra(
+                        EXTRA_ENABLED,
+                        true
+                    )
+
+                updateAllEffects()
+            }
+
+            ACTION_SET_LIMITER_ENABLED -> {
+
+                limiterEnabled =
+                    intent.getBooleanExtra(
+                        EXTRA_ENABLED,
+                        true
+                    )
+
+                updateAllEffects()
+            }
+
+            ACTION_SET_MDRC_THRESHOLD -> {
+
+                mdrcThreshold =
+                    intent.getFloatExtra(
+                        EXTRA_MDRC_THRESHOLD,
+                        -12f
+                    )
+
+                updateAllEffects()
+            }
         }
 
         return START_STICKY
     }
 
-    /**
-     * Android 14:
-     * usa MEDIA_PLAYBACK.
-     *
-     * MEDIA_PROCESSING pertenece a APIs posteriores.
-     */
-    private fun promoteToForegroundService() {
-
-        val notification =
-            buildOngoingNotification()
-
-        try {
-
-            if (
-                Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.Q
-            ) {
-
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo
-                        .FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-
-            } else {
-
-                @Suppress("DEPRECATION")
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification
-                )
-            }
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Error iniciando Foreground Service",
-                e
-            )
-        }
-    }
-
-    private fun buildOngoingNotification(): Notification {
-
-        val launchIntent =
-            packageManager
-                .getLaunchIntentForPackage(
-                    packageName
-                )
-
-        val pendingIntent =
-            if (launchIntent != null) {
-
-                PendingIntent.getActivity(
-                    this,
-                    0,
-                    launchIntent,
-                    PendingIntent.FLAG_IMMUTABLE or
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                )
-
-            } else {
-                null
-            }
-
-        val builder =
-            if (
-                Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.O
-            ) {
-
-                Notification.Builder(
-                    this,
-                    CHANNEL_ID
-                )
-
-            } else {
-
-                @Suppress("DEPRECATION")
-                Notification.Builder(this)
-            }
-
-        val activeSessionCount =
-            activeEffects.size
-
-        val statusText =
-            "Motor WaveEQ activo • " +
-                "$activeSessionCount sesión(es) • " +
-                "32 bandas PEQ + MDRC + limitador"
-
-        return builder
-            .setContentTitle(
-                "WaveEQ - Procesamiento de Audio"
-            )
-            .setContentText(statusText)
-            .setSmallIcon(
-                android.R.drawable.ic_media_play
-            )
-            .setOngoing(true)
-            .setContentIntent(pendingIntent)
-            .setCategory(
-                Notification.CATEGORY_SERVICE
-            )
-            .setVisibility(
-                Notification.VISIBILITY_PUBLIC
-            )
-            .build()
-    }
-
-    private fun createNotificationChannel() {
-
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.O
-        ) {
-
-            val channel =
-                NotificationChannel(
-                    CHANNEL_ID,
-                    "Motor de Audio WaveEQ",
-                    NotificationManager
-                        .IMPORTANCE_LOW
-                ).apply {
-
-                    description =
-                        "Procesamiento de audio en segundo plano"
-
-                    setShowBadge(false)
-
-                    lockscreenVisibility =
-                        Notification.VISIBILITY_PUBLIC
-                }
-
-            val manager =
-                getSystemService(
-                    Context.NOTIFICATION_SERVICE
-                ) as NotificationManager
-
-            manager.createNotificationChannel(
-                channel
-            )
-        }
-    }
-
-    /**
-     * Construcción correcta de DynamicsProcessing.
-     *
-     * El Builder recibe las etapas completas:
-     *   PreEQ
-     *   MBC
-     *   PostEQ
-     *   Limiter
-     *
-     * Las bandas se crean dentro de cada etapa.
-     */
-    private fun createDynamicsProcessingConfig():
-        DynamicsProcessing.Config {
-
-        val channelCount = 2
-
-        val builder =
-            DynamicsProcessing.Config.Builder(
-                DynamicsProcessing
-                    .VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-
-                channelCount,
-
-                true,
-                TOTAL_PEQ_BANDS,
-
-                true,
-                3,
-
-                true,
-                3,
-
-                true
-            )
-
-        /*
-         * =========================================================
-         * PRE-EQ — 32 BANDAS
-         * =========================================================
-         */
-
-        val preEq =
-            DynamicsProcessing.Eq(
-                true,
-                isGlobalEQActive,
-                TOTAL_PEQ_BANDS
-            )
-
-        for (
-            band in 0 until TOTAL_PEQ_BANDS
-        ) {
-
-            val eqBand =
-                DynamicsProcessing.EqBand(
-                    true,
-                    PEQ_FREQUENCIES[band],
-                    currentBandGains[band]
-                )
-
-            preEq.setBand(
-                band,
-                eqBand
-            )
-        }
-
-        builder.setPreEqAllChannelsTo(
-            preEq
-        )
-
-        /*
-         * =========================================================
-         * MDRC / MBC — 3 BANDAS
-         * =========================================================
-         */
-
-        val mbc =
-            DynamicsProcessing.Mbc(
-                true,
-                isMDRCActive,
-                3
-            )
-
-        mbc.setBand(
-            0,
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                200.0f,
-                15.0f,
-                100.0f,
-                mdrcRatios[0],
-                mdrcThresholds[0],
-                4.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[0]
-            )
-        )
-
-        mbc.setBand(
-            1,
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                3000.0f,
-                20.0f,
-                80.0f,
-                mdrcRatios[1],
-                mdrcThresholds[1],
-                3.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[1]
-            )
-        )
-
-        mbc.setBand(
-            2,
-            DynamicsProcessing.MbcBand(
-                isMDRCActive,
-                20000.0f,
-                10.0f,
-                60.0f,
-                mdrcRatios[2],
-                mdrcThresholds[2],
-                2.0f,
-                -90.0f,
-                1.0f,
-                0.0f,
-                mdrcGains[2]
-            )
-        )
-
-        /*
-         * IMPORTANTE:
-         * El Builder recibe el Mbc completo.
-         * No se utilizan setMbcBandAllChannelsTo()
-         * sobre el Builder.
-         */
-        builder.setMbcAllChannelsTo(
-            mbc
-        )
-
-        /*
-         * =========================================================
-         * POST-EQ / DEQ — 3 BANDAS
-         * =========================================================
-         */
-
-        val postEq =
-            DynamicsProcessing.Eq(
-                true,
-                isDEQActive,
-                3
-            )
-
-        postEq.setBand(
-            0,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                100.0f,
-                0.0f
-            )
-        )
-
-        postEq.setBand(
-            1,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                1000.0f,
-                0.0f
-            )
-        )
-
-        postEq.setBand(
-            2,
-            DynamicsProcessing.EqBand(
-                isDEQActive,
-                10000.0f,
-                0.0f
-            )
-        )
-
-        builder.setPostEqAllChannelsTo(
-            postEq
-        )
-
-        /*
-         * =========================================================
-         * LIMITADOR
-         * =========================================================
-         */
-
-        val limiter =
-            DynamicsProcessing.Limiter(
-                true,
-                limiterActive,
-                0,
-                LIMITER_ATTACK_TIME_MS,
-                LIMITER_RELEASE_TIME_MS,
-                LIMITER_RATIO,
-                LIMITER_THRESHOLD_DB,
-                LIMITER_POST_GAIN_DB
-            )
-
-        builder.setLimiterAllChannelsTo(
-            limiter
-        )
-
-        return builder.build()
-    }
-
-    @Synchronized
-    private fun attachOrUpdateSession(
+    private fun attachSession(
         sessionId: Int,
-        callingPackage: String
+        packageName: String
     ) {
 
+        if (sessionId < 0) return
+
+        /*
+         * Si ya existe un efecto para esta sesión,
+         * simplemente actualizamos su configuración.
+         */
+        if (activeEffects.containsKey(sessionId)) {
+            sessionPackages[sessionId] = packageName
+            updateEffect(activeEffects[sessionId]!!)
+            return
+        }
+
         try {
-
-            val existing =
-                activeEffects[sessionId]
-
-            if (existing != null) {
-
-                if (!existing.enabled) {
-
-                    existing.enabled =
-                        isGlobalEQActive
-                }
-
-                return
-            }
-
-            Log.i(
-                TAG,
-                "Creando DynamicsProcessing para sesión " +
-                    "$sessionId ($callingPackage)"
-            )
 
             val config =
                 createDynamicsProcessingConfig()
@@ -755,685 +265,237 @@ class AudioEQService : Service() {
                     config
                 )
 
-            effect.enabled =
-                isGlobalEQActive
+            effect.enabled = true
 
-            activeEffects[sessionId] =
-                effect
+            activeEffects[sessionId] = effect
+            sessionPackages[sessionId] = packageName
+
+            updateEffect(effect)
 
             Log.i(
                 TAG,
-                "DynamicsProcessing activado en sesión " +
-                    "$sessionId"
+                "DSP conectado a sesión $sessionId ($packageName)"
             )
-
-            updateNotification()
 
         } catch (e: Exception) {
 
             Log.e(
                 TAG,
-                "Error inicializando DynamicsProcessing " +
-                    "en sesión $sessionId",
+                "No se pudo conectar DSP a sesión $sessionId",
                 e
             )
         }
     }
 
-    @Synchronized
-    private fun detachSession(
-        sessionId: Int
-    ) {
+    private fun detachSession(sessionId: Int) {
 
         val effect =
             activeEffects.remove(sessionId)
 
-        if (effect != null) {
+        sessionPackages.remove(sessionId)
 
-            try {
+        try {
+            effect?.release()
+        } catch (_: Exception) {
+        }
 
-                effect.enabled = false
+        Log.i(
+            TAG,
+            "DSP desconectado de sesión $sessionId"
+        )
+    }
 
-                effect.release()
+    private fun createDynamicsProcessingConfig():
+            DynamicsProcessing.Config {
 
-            } catch (e: Exception) {
+        val preEq =
+            DynamicsProcessing.Eq(
+                true,
+                TOTAL_PEQ_BANDS
+            )
 
-                Log.w(
-                    TAG,
-                    "Error liberando sesión $sessionId",
-                    e
-                )
-            }
+        val mbc =
+            DynamicsProcessing.Mbc(
+                true,
+                3
+            )
 
-            updateNotification()
+        val postEq =
+            DynamicsProcessing.Eq(
+                true,
+                3
+            )
+
+        return DynamicsProcessing.Config.Builder(
+            DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+            CHANNEL_COUNT,
+            preEq,
+            mbc,
+            postEq,
+            limiterEnabled
+        ).build()
+    }
+
+    private fun updateAllEffects() {
+
+        for (effect in activeEffects.values) {
+            updateEffect(effect)
         }
     }
 
-    @Synchronized
-    fun setBandGain(
-        bandIndex: Int,
-        gainDb: Float
+    private fun updateEffect(
+        effect: DynamicsProcessing
     ) {
 
-        if (
-            bandIndex !in
-            0 until TOTAL_PEQ_BANDS
-        ) {
+        try {
+
+            /*
+             * 32 bandas PEQ reales.
+             */
+            for (channel in 0 until CHANNEL_COUNT) {
+
+                for (band in 0 until TOTAL_PEQ_BANDS) {
+
+                    val gain =
+                        if (eqEnabled) {
+                            currentBandGains[band]
+                        } else {
+                            0f
+                        }
+
+                    val parameters =
+                        effect.getPreEqBand(
+                            channel,
+                            band
+                        )
+
+                    parameters.gain =
+                        gain.coerceIn(
+                            MIN_GAIN,
+                            MAX_GAIN
+                        )
+
+                    effect.setPreEqBand(
+                        channel,
+                        band,
+                        parameters
+                    )
+                }
+            }
+
+            /*
+             * MDRC básico.
+             *
+             * No dejamos que el threshold extremo
+             * silencie accidentalmente la señal.
+             */
+            val safeThreshold =
+                mdrcThreshold.coerceIn(
+                    -60f,
+                    0f
+                )
+
+            for (channel in 0 until CHANNEL_COUNT) {
+
+                val mbc =
+                    effect.getMbcBand(
+                        channel,
+                        0
+                    )
+
+                mbc.threshold =
+                    safeThreshold
+
+                effect.setMbcBand(
+                    channel,
+                    0,
+                    mbc
+                )
+            }
+
+            effect.limiterEnabled =
+                limiterEnabled
+
+            effect.enabled = true
+
+        } catch (e: Exception) {
+
+            Log.e(
+                TAG,
+                "Error actualizando DynamicsProcessing",
+                e
+            )
+        }
+    }
+
+    private fun setBandGain(
+        index: Int,
+        gain: Float
+    ) {
+
+        if (index !in 0 until TOTAL_PEQ_BANDS) {
             return
         }
 
-        val safeGain =
-            gainDb.coerceIn(
-                -15.0f,
-                15.0f
+        currentBandGains[index] =
+            gain.coerceIn(
+                MIN_GAIN,
+                MAX_GAIN
             )
 
-        currentBandGains[bandIndex] =
-            safeGain
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
+        for (effect in activeEffects.values) {
 
             try {
 
-                val left =
-                    effect.getPreEqBandByChannelIndex(
-                        0,
-                        bandIndex
+                for (channel in 0 until CHANNEL_COUNT) {
+
+                    val band =
+                        effect.getPreEqBand(
+                            channel,
+                            index
+                        )
+
+                    band.gain =
+                        currentBandGains[index]
+
+                    effect.setPreEqBand(
+                        channel,
+                        index,
+                        band
                     )
-
-                left.setGain(
-                    safeGain
-                )
-
-                effect.setPreEqBandByChannelIndex(
-                    0,
-                    bandIndex,
-                    left
-                )
-
-                val right =
-                    effect.getPreEqBandByChannelIndex(
-                        1,
-                        bandIndex
-                    )
-
-                right.setGain(
-                    safeGain
-                )
-
-                effect.setPreEqBandByChannelIndex(
-                    1,
-                    bandIndex,
-                    right
-                )
+                }
 
             } catch (e: Exception) {
 
-                Log.w(
+                Log.e(
                     TAG,
-                    "No se pudo aplicar banda " +
-                        "$bandIndex en sesión " +
-                        "$sessionId",
+                    "Error aplicando banda $index",
                     e
                 )
             }
         }
     }
 
-    @Synchronized
-    fun setAllBandGains(
+    private fun setAllBandGains(
         gains: FloatArray
     ) {
 
-        if (
-            gains.size !=
-            TOTAL_PEQ_BANDS
-        ) {
-            return
-        }
+        val count =
+            minOf(
+                gains.size,
+                TOTAL_PEQ_BANDS
+            )
 
-        for (
-            i in 0 until TOTAL_PEQ_BANDS
-        ) {
+        for (i in 0 until count) {
 
             currentBandGains[i] =
                 gains[i].coerceIn(
-                    -15.0f,
-                    15.0f
+                    MIN_GAIN,
+                    MAX_GAIN
                 )
         }
 
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                for (
-                    band in 0 until TOTAL_PEQ_BANDS
-                ) {
-
-                    val gain =
-                        currentBandGains[band]
-
-                    val left =
-                        effect.getPreEqBandByChannelIndex(
-                            0,
-                            band
-                        )
-
-                    left.setGain(gain)
-
-                    effect.setPreEqBandByChannelIndex(
-                        0,
-                        band,
-                        left
-                    )
-
-                    val right =
-                        effect.getPreEqBandByChannelIndex(
-                            1,
-                            band
-                        )
-
-                    right.setGain(gain)
-
-                    effect.setPreEqBandByChannelIndex(
-                        1,
-                        band,
-                        right
-                    )
-                }
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error aplicando las 32 bandas " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    @Synchronized
-    fun setLimiterEnabled(
-        enabled: Boolean
-    ) {
-
-        limiterActive =
-            enabled
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                val left =
-                    effect.getLimiterByChannelIndex(
-                        0
-                    )
-
-                left.setEnabled(
-                    enabled
-                )
-
-                effect.setLimiterByChannelIndex(
-                    0,
-                    left
-                )
-
-                val right =
-                    effect.getLimiterByChannelIndex(
-                        1
-                    )
-
-                right.setEnabled(
-                    enabled
-                )
-
-                effect.setLimiterByChannelIndex(
-                    1,
-                    right
-                )
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error cambiando limitador " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    @Synchronized
-    fun toggleEQ(
-        enabled: Boolean
-    ) {
-
-        isGlobalEQActive =
-            enabled
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                effect.enabled =
-                    enabled
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error cambiando EQ " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-
-        updateNotification()
-    }
-
-    fun isEQActive(): Boolean =
-        isGlobalEQActive
-
-    fun isLimiterActive(): Boolean =
-        limiterActive
-
-    fun getAllBandGains(): FloatArray =
-        currentBandGains.clone()
-
-    /*
-     * =========================================================
-     * MDRC
-     * =========================================================
-     */
-
-    @Synchronized
-    fun setMDRCEnabled(
-        enabled: Boolean
-    ) {
-
-        isMDRCActive =
-            enabled
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                val leftMbc =
-                    effect.getMbcByChannelIndex(
-                        0
-                    )
-
-                leftMbc.setEnabled(
-                    enabled
-                )
-
-                effect.setMbcByChannelIndex(
-                    0,
-                    leftMbc
-                )
-
-                val rightMbc =
-                    effect.getMbcByChannelIndex(
-                        1
-                    )
-
-                rightMbc.setEnabled(
-                    enabled
-                )
-
-                effect.setMbcByChannelIndex(
-                    1,
-                    rightMbc
-                )
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error cambiando MDRC " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    fun isMDRCEnabled(): Boolean =
-        isMDRCActive
-
-    @Synchronized
-    fun setMDRCParameters(
-        band: Int,
-        threshold: Float,
-        ratio: Float,
-        postGain: Float
-    ) {
-
-        if (band !in 0..2) {
-            return
-        }
-
-        mdrcThresholds[band] =
-            threshold
-
-        mdrcRatios[band] =
-            ratio
-
-        mdrcGains[band] =
-            postGain
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                val leftMbc =
-                    effect.getMbcByChannelIndex(
-                        0
-                    )
-
-                if (
-                    leftMbc.getBandCount() > band
-                ) {
-
-                    val leftBand =
-                        leftMbc.getBand(
-                            band
-                        )
-
-                    leftBand.setThreshold(
-                        threshold
-                    )
-
-                    leftBand.setRatio(
-                        ratio
-                    )
-
-                    leftBand.setPostGain(
-                        postGain
-                    )
-
-                    leftMbc.setBand(
-                        band,
-                        leftBand
-                    )
-
-                    effect.setMbcByChannelIndex(
-                        0,
-                        leftMbc
-                    )
-                }
-
-                val rightMbc =
-                    effect.getMbcByChannelIndex(
-                        1
-                    )
-
-                if (
-                    rightMbc.getBandCount() > band
-                ) {
-
-                    val rightBand =
-                        rightMbc.getBand(
-                            band
-                        )
-
-                    rightBand.setThreshold(
-                        threshold
-                    )
-
-                    rightBand.setRatio(
-                        ratio
-                    )
-
-                    rightBand.setPostGain(
-                        postGain
-                    )
-
-                    rightMbc.setBand(
-                        band,
-                        rightBand
-                    )
-
-                    effect.setMbcByChannelIndex(
-                        1,
-                        rightMbc
-                    )
-                }
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error aplicando MDRC " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    fun getMDRCThreshold(
-        band: Int
-    ): Float =
-        if (band in 0..2) {
-            mdrcThresholds[band]
-        } else {
-            -12.0f
-        }
-
-    fun getMDRCRatio(
-        band: Int
-    ): Float =
-        if (band in 0..2) {
-            mdrcRatios[band]
-        } else {
-            2.0f
-        }
-
-    fun getMDRCGain(
-        band: Int
-    ): Float =
-        if (band in 0..2) {
-            mdrcGains[band]
-        } else {
-            0.0f
-        }
-
-    /*
-     * =========================================================
-     * DEQ
-     * =========================================================
-     */
-
-    @Synchronized
-    fun setDEQEnabled(
-        enabled: Boolean
-    ) {
-
-        isDEQActive =
-            enabled
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                val leftEq =
-                    effect.getPostEqByChannelIndex(
-                        0
-                    )
-
-                leftEq.setEnabled(
-                    enabled
-                )
-
-                effect.setPostEqByChannelIndex(
-                    0,
-                    leftEq
-                )
-
-                val rightEq =
-                    effect.getPostEqByChannelIndex(
-                        1
-                    )
-
-                rightEq.setEnabled(
-                    enabled
-                )
-
-                effect.setPostEqByChannelIndex(
-                    1,
-                    rightEq
-                )
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error cambiando DEQ " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    fun isDEQEnabled(): Boolean =
-        isDEQActive
-
-    fun setDEQSensitivity(
-        sens: Float
-    ) {
-
-        deqSensitivity =
-            sens.coerceIn(
-                0.0f,
-                2.0f
-            )
-    }
-
-    fun getDEQSensitivity(): Float =
-        deqSensitivity
-
-    @Synchronized
-    fun setMDRCThreshold(
-        band: Int,
-        threshold: Float
-    ) {
-
-        if (band !in 0..2) {
-            return
-        }
-
-        mdrcThresholds[band] =
-            threshold
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
-
-            try {
-
-                val leftMbc =
-                    effect.getMbcByChannelIndex(
-                        0
-                    )
-
-                if (
-                    leftMbc.getBandCount() > band
-                ) {
-
-                    val leftBand =
-                        leftMbc.getBand(
-                            band
-                        )
-
-                    leftBand.setThreshold(
-                        threshold
-                    )
-
-                    leftMbc.setBand(
-                        band,
-                        leftBand
-                    )
-
-                    effect.setMbcByChannelIndex(
-                        0,
-                        leftMbc
-                    )
-                }
-
-                val rightMbc =
-                    effect.getMbcByChannelIndex(
-                        1
-                    )
-
-                if (
-                    rightMbc.getBandCount() > band
-                ) {
-
-                    val rightBand =
-                        rightMbc.getBand(
-                            band
-                        )
-
-                    rightBand.setThreshold(
-                        threshold
-                    )
-
-                    rightMbc.setBand(
-                        band,
-                        rightBand
-                    )
-
-                    effect.setMbcByChannelIndex(
-                        1,
-                        rightMbc
-                    )
-                }
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error cambiando threshold MDRC " +
-                        "en sesión $sessionId",
-                    e
-                )
-            }
-        }
-    }
-
-    fun getCurrentBandGains(): FloatArray =
-        currentBandGains.clone()
-
-    fun isLimiterEnabled(): Boolean =
-        limiterActive
-
-    fun getActiveSessionCount(): Int =
-        activeEffects.size
-
-    private fun updateNotification() {
-
-        val manager =
-            getSystemService(
-                Context.NOTIFICATION_SERVICE
-            ) as NotificationManager
-
-        manager.notify(
-            NOTIFICATION_ID,
-            buildOngoingNotification()
-        )
+        updateAllEffects()
     }
 
     private fun acquireWakeLock() {
@@ -1442,28 +504,20 @@ class AudioEQService : Service() {
 
             val powerManager =
                 getSystemService(
-                    Context.POWER_SERVICE
+                    POWER_SERVICE
                 ) as PowerManager
 
             wakeLock =
                 powerManager.newWakeLock(
                     PowerManager.PARTIAL_WAKE_LOCK,
-                    "WaveEQ:AudioEngineWakeLock"
-                ).apply {
+                    "$packageName:WaveEQ"
+                )
 
-                    setReferenceCounted(false)
-
-                    acquire(
-                        12L *
-                            60L *
-                            60L *
-                            1000L
-                    )
-                }
+            wakeLock?.acquire()
 
         } catch (e: Exception) {
 
-            Log.w(
+            Log.e(
                 TAG,
                 "No se pudo adquirir WakeLock",
                 e
@@ -1471,59 +525,84 @@ class AudioEQService : Service() {
         }
     }
 
-    private fun releaseWakeLock() {
+    private fun createNotificationChannel() {
 
-        try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
-            wakeLock?.let {
+            val manager =
+                getSystemService(
+                    NotificationManager::class.java
+                )
 
-                if (it.isHeld) {
-                    it.release()
-                }
-            }
+            val channel =
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL,
+                    "WaveEQ Audio DSP",
+                    NotificationManager.IMPORTANCE_LOW
+                )
 
-        } catch (e: Exception) {
+            manager.createNotificationChannel(channel)
+        }
+    }
 
-            Log.w(
-                TAG,
-                "Error liberando WakeLock",
-                e
+    private fun startForegroundService() {
+
+        val notification =
+            Notification.Builder(
+                this,
+                NOTIFICATION_CHANNEL
+            )
+                .setContentTitle("WaveEQ")
+                .setContentText(
+                    "Procesador DSP de audio activo"
+                )
+                .setSmallIcon(
+                    android.R.drawable.ic_media_play
+                )
+                .setOngoing(true)
+                .build()
+
+        if (Build.VERSION.SDK_INT >= 29) {
+
+            startForeground(
+                1001,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+
+        } else {
+
+            startForeground(
+                1001,
+                notification
             )
         }
-
-        wakeLock = null
     }
 
     override fun onDestroy() {
 
-        Log.w(
-            TAG,
-            "Destruyendo AudioEQService"
-        )
-
-        activeEffects.forEach {
-            (sessionId, effect) ->
+        for (effect in activeEffects.values) {
 
             try {
-
-                effect.enabled = false
-
                 effect.release()
-
-            } catch (e: Exception) {
-
-                Log.w(
-                    TAG,
-                    "Error liberando sesión $sessionId",
-                    e
-                )
+            } catch (_: Exception) {
             }
         }
 
         activeEffects.clear()
+        sessionPackages.clear()
 
-        releaseWakeLock()
+        try {
+            wakeLock?.release()
+        } catch (_: Exception) {
+        }
+
+        wakeLock = null
 
         super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
     }
 }

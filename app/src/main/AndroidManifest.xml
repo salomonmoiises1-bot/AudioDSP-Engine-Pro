@@ -13,7 +13,7 @@
 
     <!-- Foreground Service obligatorio en Android 14+ (API 34) para procesamiento multimedia -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".MainApplication"
@@ -44,7 +44,7 @@
             android:name=".AudioEQService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="mediaProcessing" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Receptor de transmisiones para sesiones de audio -->
         <receiver

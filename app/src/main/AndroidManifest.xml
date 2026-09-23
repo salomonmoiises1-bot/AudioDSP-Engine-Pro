@@ -2,16 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permisos esenciales para captura y modificación de audio global sin root -->
+    <!-- Control de efectos y configuración de audio -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Notificaciones requeridas en Android 13+ (API 33) -->
+    <!-- Notificaciones -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Foreground Service obligatorio en Android 14+ (API 34) para procesamiento multimedia -->
+    <!-- Servicio de procesamiento de audio -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
@@ -25,7 +24,6 @@
         android:theme="@style/AppTheme"
         tools:targetApi="34">
 
-        <!-- Actividad Principal Nativa Jetpack Compose -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -33,24 +31,25 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
-        <!-- Servicio de Foreground para procesamiento de audio en tiempo real -->
         <service
             android:name=".AudioEQService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
-        <!-- Receptor de transmisiones para sesiones de audio -->
         <receiver
             android:name=".AudioReceiver"
             android:enabled="true"
             android:exported="true">
+
             <intent-filter android:priority="1000">
                 <action android:name="android.media.action.OPEN_AUDIO_EFFECT_CONTROL_SESSION" />
                 <action android:name="android.media.action.CLOSE_AUDIO_EFFECT_CONTROL_SESSION" />
@@ -60,6 +59,7 @@
                 <action android:name="com.spotify.music.playbackstatechanged" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+
         </receiver>
 
     </application>

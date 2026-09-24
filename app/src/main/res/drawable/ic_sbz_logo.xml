@@ -11,9 +11,7 @@
         android:strokeWidth="2.5"
         android:strokeLineCap="round"
         android:pathData="M10,24 C14,14 18,34 24,14 C30,34 34,18 38,24" />
-    <circle
-        android:cx="24"
-        android:cy="14"
-        android:r="2"
-        android:fillColor="#FFAB00" />
+    <path
+        android:fillColor="#FFAB00"
+        android:pathData="M 22,14 A 2,2 0 1,1 26,14 A 2,2 0 1,1 22,14 Z" />
 </vector>

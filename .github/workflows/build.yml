@@ -23,15 +23,13 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify or bootstrap Gradle wrapper
+      - name: Generate clean Gradle Wrapper
         run: |
-          chmod +x ./gradlew || true
-          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-            mkdir -p gradle/wrapper
-            curl -sL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradle/wrapper/gradle-wrapper.jar
-          fi
+          # Reemplaza cualquier gradlew roto por uno nuevo y funcional
+          gradle wrapper --gradle-version 8.9
+          chmod +x ./gradlew
 
       - name: Assemble Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace

@@ -29,24 +29,22 @@ app_path=$0
 
 # Need this for relative symlinks.
 while [ -h "$app_path" ]; do
-    ls=$(ls -ld "$app_path")
-    link=$(expr "$ls" : '.*-> \(.*\)$')
+    ls=`ls -ld "$app_path"`
+    link=`expr "$ls" : '.*-> \(.*\)$'`
     if expr "$link" : '/.*' > /dev/null; then
         app_path="$link"
     else
-        app_path=$(dirname "$app_path")"/$link"
+        app_path=`dirname "$app_path"`"/$link"
     fi
 done
 
-APP_HOME=$(cd "$(dirname "$app_path")" && pwd -P) || exit
-
-APP_NAME="Gradle"
-APP_BASE_NAME=${0##*/}
+APP_BASE_NAME=`basename "$0"`
+APP_HOME=`cd "\`dirname \"$app_path\"\`" > /dev/null && pwd`
 
 # Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
 
-# Use the maximum available, or set MAX_FD to -1 to use the system default.
+# Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 
 warn () {
@@ -65,11 +63,19 @@ cygwin=false
 msys=false
 darwin=false
 nonstop=false
-case "$(uname)" in
-  CYGWIN* ) cygwin=true ;;
-  Darwin* ) darwin=true ;;
-  MINGW* ) msys=true ;;
-  NONSTOP* ) nonstop=true ;;
+case "`uname`" in
+  CYGWIN* )
+    cygwin=true
+    ;;
+  Darwin* )
+    darwin=true
+    ;;
+  MINGW* )
+    msys=true
+    ;;
+  NONSTOP* )
+    nonstop=true
+    ;;
 esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
@@ -98,28 +104,18 @@ fi
 
 # Increase the maximum file descriptors if possible.
 if [ "$cygwin" = "false" -a "$darwin" = "false" -a "$nonstop" = "false" ] ; then
-    case $MAX_FD in
+    case $MAX_FD in #(
       max*)
-        MAX_FD=$(ulimit -H -n) ||
+        MAX_FD=`ulimit -H -n` ||
             warn "Could not query maximum file descriptor limit"
     esac
-    case $MAX_FD in
-      '' | soft) :;;
+    case $MAX_FD in #(
+      '' | soft) :;; #(
       *)
         ulimit -n "$MAX_FD" ||
             warn "Could not set maximum file descriptor limit to $MAX_FD"
     esac
 fi
 
-# Collect all arguments for the java command;
-#   * If there are no args, our script must run "java -jar wrapper.jar"
-#   * If there are args, our script must run "java -jar wrapper.jar arg1 arg2 ..."
-#
-# The following stanza creates a list from the arguments.
-set -- \
-        "-Dorg.gradle.appname=$APP_BASE_NAME" \
-        -classpath "$CLASSPATH" \
-        org.gradle.wrapper.GradleWrapperMain \
-        "$@"
-
-exec "$JAVACMD" "$@"
+# Collect all arguments for the java sub-shell.
+exec "$JAVACMD" "$@" -jar "$CLASSPATH"

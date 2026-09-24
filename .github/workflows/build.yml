@@ -17,18 +17,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
-          cache-dependency-path: sBz/build.gradle.kts
 
       - name: Grant execute permission for gradlew
-        run: chmod +x ./sBz/gradlew
+        run: chmod +x ./gradlew
 
       - name: Build with Gradle
-        working-directory: ./sBz
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK Artifact
@@ -36,6 +34,6 @@ jobs:
         with:
           name: sBz-DSP-debug
           path: |
-            sBz/**/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

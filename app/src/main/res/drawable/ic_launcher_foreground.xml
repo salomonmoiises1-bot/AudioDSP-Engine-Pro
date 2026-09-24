@@ -1,1 +1,21 @@
-
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M30,36 L42,36 L42,72 L30,72 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M48,24 L60,24 L60,84 L48,84 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M66,44 L78,44 L78,64 L66,64 Z" />
+    <!-- Wave curve connecting them -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M24,54 C34,30 40,78 54,28 C68,78 74,38 84,54" />
+</vector>

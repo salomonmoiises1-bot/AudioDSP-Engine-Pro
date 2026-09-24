@@ -113,13 +113,13 @@ class SbzAudioService : Service() {
                 updateConfig(activeConfig.copy(isEnabled = newEnabled))
             }
             ACTION_ATTACH_SESSION -> {
-                val sessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1)
+                val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
                 if (sessionId != -1) {
                     dspEngine.attachSession(sessionId)
                 }
             }
             ACTION_DETACH_SESSION -> {
-                val sessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1)
+                val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
                 if (sessionId != -1) {
                     dspEngine.detachSession(sessionId)
                 }

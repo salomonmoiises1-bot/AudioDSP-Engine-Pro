@@ -35,7 +35,7 @@ jobs:
         run: |
           if [ -f "./gradlew" ]; then
             ./gradlew assembleDebug --stacktrace
-          elif [ -f "./sBz/gradlew" ]; then
+          else
             cd sBz && ./gradlew assembleDebug --stacktrace
           fi
 

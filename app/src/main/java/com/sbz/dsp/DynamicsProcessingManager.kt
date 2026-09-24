@@ -235,7 +235,18 @@ class DynamicsProcessingManager(
                 toneOffsetDb += config.toneTrebleDb * factor
             }
 
-            val gain = toneOffsetDb.coerceIn(-15.0f, 15.0f)
+            // The device DSP used by DynamicsProcessing can be unreliable for a
+            // subset of very-low-frequency Post-EQ bands. Route the complete
+            // low-frequency EQ section (20..250 Hz) through Pre-EQ instead.
+            // The graphic EQ remains 32-band and keeps the exact ISO center
+            // frequencies; this only changes which native EQ stage applies
+            // the gain.
+            val graphicEqGain = if (freq <= 250f) {
+                config.eqGains.getOrElse(i) { 0f }
+            } else {
+                0f
+            }
+            val gain = (toneOffsetDb + graphicEqGain).coerceIn(-15.0f, 15.0f)
 
             val eqBand = DynamicsProcessing.EqBand(true, freq, gain)
             effect.setPreEqBandByChannelIndex(0, i, eqBand)
@@ -253,9 +264,13 @@ class DynamicsProcessingManager(
         val freqs = if (bands == TARGET_EQ_BANDS) DspConfig.FREQUENCIES else downsampleFrequencies(DspConfig.FREQUENCIES, bands)
 
         for (i in 0 until bands) {
-            val gain = mappedGains.getOrElse(i) { 0f }.coerceIn(-15.0f, 15.0f)
+            val requestedGain = mappedGains.getOrElse(i) { 0f }
             val freq = freqs[i]
-            val eqBand = DynamicsProcessing.EqBand(true, freq, gain)
+            // Low bands are handled by Pre-EQ above. Keeping their Post-EQ
+            // gain at zero prevents double application while preserving the
+            // exact 32-band control model and ISO frequency labels.
+            val gain = if (freq <= 250f) 0f else requestedGain
+            val eqBand = DynamicsProcessing.EqBand(true, freq, gain.coerceIn(-15.0f, 15.0f))
             effect.setPostEqBandByChannelIndex(0, i, eqBand)
             effect.setPostEqBandByChannelIndex(1, i, eqBand)
         }

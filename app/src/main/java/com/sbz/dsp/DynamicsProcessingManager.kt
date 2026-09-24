@@ -235,22 +235,41 @@ class DynamicsProcessingManager(
                 toneOffsetDb += config.toneTrebleDb * factor
             }
 
-            // The device DSP used by DynamicsProcessing can be unreliable for a
-            // subset of very-low-frequency Post-EQ bands. Route the complete
-            // low-frequency EQ section (20..250 Hz) through Pre-EQ instead.
-            // The graphic EQ remains 32-band and keeps the exact ISO center
-            // frequencies; this only changes which native EQ stage applies
-            // the gain.
+            // Keep the tone stage in Pre-EQ.  For the low graphic-EQ bands,
+            // some vendor DynamicsProcessing implementations do not reliably
+            // expose the same response in one of the two EQ stages.  Do not
+            // move the bands wholesale to one stage: that was observed to
+            // make the low faders ineffective on affected devices.
+            //
+            // Instead, split the requested low-band gain equally between
+            // Pre-EQ and Post-EQ.  If both stages are honored, the combined
+            // response is the requested dB value.  If a vendor ignores one
+            // stage for low frequencies, the other half still remains active
+            // instead of producing a completely dead fader.
             val graphicEqGain = if (freq <= 250f) {
                 config.eqGains.getOrElse(i) { 0f }
             } else {
                 0f
             }
-            val gain = (toneOffsetDb + graphicEqGain).coerceIn(-15.0f, 15.0f)
 
-            val eqBand = DynamicsProcessing.EqBand(true, freq, gain)
-            effect.setPreEqBandByChannelIndex(0, i, eqBand)
-            effect.setPreEqBandByChannelIndex(1, i, eqBand)
+            // Implement Bass Boost inside the same DynamicsProcessing EQ
+            // chain instead of stacking Android's legacy BassBoost effect on
+            // the same audio session.  Some vendor effect chains can mute or
+            // lose control when those two native effects are combined.
+            val bassBoostDb = if (config.bassBoostEnabled && freq <= 250f) {
+                val strength = (config.bassBoostStrength.toFloat() / 1000f).coerceIn(0f, 1f)
+                val shape = (1f - (freq / 250f)).coerceIn(0f, 1f)
+                strength * 6.0f * shape
+            } else {
+                0f
+            }
+
+            val preGraphicGain = if (freq <= 250f) graphicEqGain * 0.5f else 0f
+            val preGain = (toneOffsetDb + bassBoostDb + preGraphicGain).coerceIn(-15.0f, 15.0f)
+
+            val preEqBand = DynamicsProcessing.EqBand(true, freq, preGain)
+            effect.setPreEqBandByChannelIndex(0, i, preEqBand)
+            effect.setPreEqBandByChannelIndex(1, i, preEqBand)
         }
     }
 
@@ -266,10 +285,13 @@ class DynamicsProcessingManager(
         for (i in 0 until bands) {
             val requestedGain = mappedGains.getOrElse(i) { 0f }
             val freq = freqs[i]
-            // Low bands are handled by Pre-EQ above. Keeping their Post-EQ
-            // gain at zero prevents double application while preserving the
-            // exact 32-band control model and ISO frequency labels.
-            val gain = if (freq <= 250f) 0f else requestedGain
+
+            // Low graphic-EQ bands are intentionally mirrored at 50% gain in
+            // Post-EQ.  The other 50% is applied in Pre-EQ above.  This keeps
+            // the user-facing 32-band gain unchanged while avoiding the
+            // vendor-specific dead-band behavior seen when low frequencies
+            // are assigned exclusively to one native EQ stage.
+            val gain = if (freq <= 250f) requestedGain * 0.5f else requestedGain
             val eqBand = DynamicsProcessing.EqBand(true, freq, gain.coerceIn(-15.0f, 15.0f))
             effect.setPostEqBandByChannelIndex(0, i, eqBand)
             effect.setPostEqBandByChannelIndex(1, i, eqBand)

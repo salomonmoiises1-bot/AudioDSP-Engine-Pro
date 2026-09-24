@@ -22,28 +22,20 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
+          cache-dependency-path: sBz/build.gradle.kts
 
       - name: Grant execute permission for gradlew
-        run: |
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-          elif [ -f "./sBz/gradlew" ]; then
-            chmod +x ./sBz/gradlew
-          fi
+        run: chmod +x ./sBz/gradlew
 
       - name: Build with Gradle
-        run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --stacktrace
-          else
-            cd sBz && ./gradlew assembleDebug --stacktrace
-          fi
+        working-directory: ./sBz
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: sBz-DSP-debug
           path: |
-            **/build/outputs/apk/debug/*.apk
+            sBz/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

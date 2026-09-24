@@ -238,8 +238,8 @@ class DynamicsProcessingManager(
             val gain = toneOffsetDb.coerceIn(-15.0f, 15.0f)
 
             val eqBand = DynamicsProcessing.EqBand(true, freq, gain)
-            effect.setPreEqBandByChannel(0, i, eqBand)
-            effect.setPreEqBandByChannel(1, i, eqBand)
+            effect.setPreEqBandByChannelIndex(0, i, eqBand)
+            effect.setPreEqBandByChannelIndex(1, i, eqBand)
         }
     }
 
@@ -256,8 +256,8 @@ class DynamicsProcessingManager(
             val gain = mappedGains.getOrElse(i) { 0f }.coerceIn(-15.0f, 15.0f)
             val freq = freqs[i]
             val eqBand = DynamicsProcessing.EqBand(true, freq, gain)
-            effect.setPostEqBandByChannel(0, i, eqBand)
-            effect.setPostEqBandByChannel(1, i, eqBand)
+            effect.setPostEqBandByChannelIndex(0, i, eqBand)
+            effect.setPostEqBandByChannelIndex(1, i, eqBand)
         }
     }
 

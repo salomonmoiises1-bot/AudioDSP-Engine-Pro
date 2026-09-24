@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sbz_primary">#00E5FF</color>
+    <color name="sbz_primary_container">#00363D</color>
+    <color name="sbz_background">#0C0F12</color>
+    <color name="sbz_surface">#161B22</color>
+    <color name="sbz_surface_variant">#212832</color>
+    <color name="sbz_accent_amber">#FFAB00</color>
+    <color name="sbz_accent_red">#FF1744</color>
+    <color name="sbz_text_primary">#F0F6FC</color>
+    <color name="sbz_text_secondary">#8B949E</color>
+</resources>

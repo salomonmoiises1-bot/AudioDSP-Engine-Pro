@@ -1,3 +1,11 @@
 <resources>
-    <string name="app_name">WaveEQ</string>
+    <string name="app_name">sBz</string>
+    <string name="app_tagline">Native Professional Audio DSP</string>
+    <string name="service_running">sBz Audio DSP Engine Active</string>
+    <string name="service_description">Real-time DynamicsProcessing &amp; 32-Band EQ pipeline</string>
+    <string name="dsp_enabled">DSP Enabled</string>
+    <string name="dsp_disabled">DSP Disabled</string>
+    <string name="action_stop">Stop DSP</string>
+    <string name="action_toggle">Toggle</string>
+    <string name="session_global">Session 0 (Global Output)</string>
 </resources>

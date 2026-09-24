@@ -21,7 +21,6 @@ class SbzDspEngine {
     private data class SessionPipeline(
         val dynamicsProcessing: DynamicsProcessingManager,
         val virtualizer: VirtualizerManager,
-        val bassBoost: BassBoostManager
     )
 
     private val pipelines = ConcurrentHashMap<Int, SessionPipeline>()
@@ -72,9 +71,7 @@ class SbzDspEngine {
                 reclaimAllControl()
             }
             val virtManager = VirtualizerManager(sessionId)
-            val bassManager = BassBoostManager(sessionId)
-
-            val pipeline = SessionPipeline(dpManager, virtManager, bassManager)
+            val pipeline = SessionPipeline(dpManager, virtManager)
             pipelines[sessionId] = pipeline
 
             // Apply current config to this newly attached session
@@ -105,7 +102,6 @@ class SbzDspEngine {
             try {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
-                pipeline.bassBoost.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
             }
@@ -135,12 +131,6 @@ class SbzDspEngine {
         try {
             // DynamicsProcessing carries EQ, MDRC, Tone, Limiter, AGC, Master Gain
             pipeline.dynamicsProcessing.applyConfig(config)
-
-            // Bass Boost
-            pipeline.bassBoost.apply(
-                config.isEnabled && config.bassBoostEnabled,
-                config.bassBoostStrength
-            )
 
             // Virtualizer
             pipeline.virtualizer.apply(
@@ -173,7 +163,6 @@ class SbzDspEngine {
             try {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
-                pipeline.bassBoost.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping session $sessionId: ${e.message}")
             }

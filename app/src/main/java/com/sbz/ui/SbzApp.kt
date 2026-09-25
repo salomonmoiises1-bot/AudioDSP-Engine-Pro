@@ -19,8 +19,8 @@ import com.sbz.ui.screens.*
 import com.sbz.ui.theme.*
 
 sealed class Screen(val title: String, val icon: ImageVector) {
-    object Dashboard : Screen("Inicio", Icons.Default.Dashboard)
-    object Equalizer : Screen("Ecualizador 32 bandas", Icons.Default.Equalizer)
+    object Dashboard : Screen("Panel", Icons.Default.Dashboard)
+    object Equalizer : Screen("EQ de 32 bandas", Icons.Default.Equalizer)
     object Tone : Screen("Tono", Icons.Default.GraphicEq)
     object Dynamics : Screen("Dinámica", Icons.Default.Compress)
     object Spatial : Screen("Espacial", Icons.Default.SurroundSound)
@@ -34,7 +34,6 @@ fun SbzApp(
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     var showPresetsDialog by remember { mutableStateOf(false) }
-
     val config by viewModel.config.collectAsState()
     val engineStatus by viewModel.engineStatus.collectAsState()
 
@@ -49,7 +48,6 @@ fun SbzApp(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-
         topBar = {
             TopAppBar(
                 title = {
@@ -64,7 +62,6 @@ fun SbzApp(
                             fontWeight = FontWeight.Black,
                             color = SbzCyan
                         )
-
                         Text(
                             text = "AUDIO DSP",
                             fontSize = 12.sp,
@@ -72,50 +69,25 @@ fun SbzApp(
                             fontWeight = FontWeight.Medium,
                             color = SbzTextSecondary
                         )
-
+                        // Live engine state chip
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .background(
-                                    if (config.isEnabled && engineStatus.isRunning) {
-                                        SbzGreen.copy(alpha = 0.2f)
-                                    } else {
-                                        SbzRed.copy(alpha = 0.2f)
-                                    }
-                                )
-                                .padding(
-                                    horizontal = 8.dp,
-                                    vertical = 2.dp
-                                )
+                                .background(if (config.isEnabled && engineStatus.isRunning) SbzGreen.copy(alpha = 0.2f) else SbzRed.copy(alpha = 0.2f))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = if (config.isEnabled) {
-                                    "ACTIVO"
-                                } else {
-                                    "DESACTIVADO"
-                                },
+                                text = if (config.isEnabled) "ACTIVO" else "BY-PASS",
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = if (
-                                    config.isEnabled &&
-                                    engineStatus.isRunning
-                                ) {
-                                    SbzGreen
-                                } else {
-                                    SbzRed
-                                }
+                                color = if (config.isEnabled && engineStatus.isRunning) SbzGreen else SbzRed
                             )
                         }
                     }
                 },
-
                 actions = {
-                    IconButton(
-                        onClick = {
-                            showPresetsDialog = true
-                        }
-                    ) {
+                    IconButton(onClick = { showPresetsDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Bookmark,
                             contentDescription = "Preajustes",
@@ -123,30 +95,22 @@ fun SbzApp(
                         )
                     }
                 },
-
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = SbzBackground,
                     titleContentColor = SbzTextPrimary
                 )
             )
         },
-
         bottomBar = {
             NavigationBar(
                 containerColor = SbzSurface,
                 tonalElevation = 0.dp
             ) {
                 screens.forEachIndexed { index, screen ->
-
                     val isSelected = selectedTabIndex == index
-
                     NavigationBarItem(
                         selected = isSelected,
-
-                        onClick = {
-                            selectedTabIndex = index
-                        },
-
+                        onClick = { selectedTabIndex = index },
                         icon = {
                             Icon(
                                 imageVector = screen.icon,
@@ -154,20 +118,14 @@ fun SbzApp(
                                 modifier = Modifier.size(20.dp)
                             )
                         },
-
                         label = {
                             Text(
                                 text = screen.title,
                                 fontSize = 9.sp,
                                 maxLines = 1,
-                                fontWeight = if (isSelected) {
-                                    FontWeight.Bold
-                                } else {
-                                    FontWeight.Normal
-                                }
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                         },
-
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = SbzCyan,
                             selectedTextColor = SbzCyan,
@@ -179,46 +137,20 @@ fun SbzApp(
                 }
             }
         },
-
         containerColor = SbzBackground
     ) { innerPadding ->
-
-        Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedTabIndex) {
-
                 0 -> DashboardScreen(
                     viewModel = viewModel,
-                    onNavigateToTab = { tab ->
-                        selectedTabIndex = tab
-                    },
-                    onOpenPresets = {
-                        showPresetsDialog = true
-                    }
+                    onNavigateToTab = { selectedTabIndex = it },
+                    onOpenPresets = { showPresetsDialog = true }
                 )
-
-                1 -> EqualizerScreen(
-                    viewModel = viewModel
-                )
-
-                2 -> ToneScreen(
-                    viewModel = viewModel
-                )
-
-                3 -> DynamicsScreen(
-                    viewModel = viewModel
-                )
-
-                4 -> SpatialScreen(
-                    viewModel = viewModel
-                )
-
-                5 -> OutputScreen(
-                    viewModel = viewModel
-                )
+                1 -> EqualizerScreen(viewModel = viewModel)
+                2 -> ToneScreen(viewModel = viewModel)
+                3 -> DynamicsScreen(viewModel = viewModel)
+                4 -> SpatialScreen(viewModel = viewModel)
+                5 -> OutputScreen(viewModel = viewModel)
             }
         }
     }
@@ -226,9 +158,7 @@ fun SbzApp(
     if (showPresetsDialog) {
         PresetsDialog(
             viewModel = viewModel,
-            onDismiss = {
-                showPresetsDialog = false
-            }
+            onDismiss = { showPresetsDialog = false }
         )
     }
 }

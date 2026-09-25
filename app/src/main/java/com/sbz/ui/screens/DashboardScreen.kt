@@ -56,7 +56,7 @@ fun DashboardScreen(
             engineStatus = engineStatus,
             currentPresetName = currentPreset,
             onToggle = { viewModel.toggleDsp() },
-            onRecuperar control = { viewModel.reclaimDspControl() },
+            onReclaim = { viewModel.reclaimDspControl() },
             onOpenPresets = onOpenPresets
         )
 
@@ -79,9 +79,9 @@ fun DashboardScreen(
 
         // 3-Band Tone Quick Control Section
         ToneQuickSection(
-            bass = config.toneGravesDb,
-            mid = config.toneMediosDb,
-            treble = config.toneAgudosDb,
+            bass = config.toneBassDb,
+            mid = config.toneMidDb,
+            treble = config.toneTrebleDb,
             onToneChange = { b, m, t -> viewModel.setTone(b, m, t) },
             onExpand = { onNavigateToTab(2) }
         )
@@ -100,20 +100,20 @@ private fun MasterStatusCard(
     engineStatus: com.sbz.dsp.SbzDspEngine.EngineStatus,
     currentPresetName: String,
     onToggle: () -> Unit,
-    onRecuperar control: () -> Unit,
+    onReclaim: () -> Unit,
     onOpenPresets: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxAncho(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = SbzCardBg),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (isEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
                     Text(
@@ -124,7 +124,7 @@ private fun MasterStatusCard(
                         color = if (isEnabled) SbzCyan else SbzTextSecondary
                     )
                     Text(
-                        text = if (isEnabled) "Motor activo" else "Bypass",
+                        text = if (isEnabled) "Motor activo" else "Omitido",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = SbzTextPrimary
@@ -142,7 +142,7 @@ private fun MasterStatusCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = "Bypass maestro",
+                        contentDescription = "Omitir procesamiento principal",
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -153,15 +153,15 @@ private fun MasterStatusCard(
             // Hardware Engine Status Row
             Row(
                 modifier = Modifier
-                    .fillMaxAncho()
+                    .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(SbzSurface)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    verticalAlignment = Alignment.CentroVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
@@ -171,7 +171,7 @@ private fun MasterStatusCard(
                             .background(if (engineStatus.isRunning) SbzGreen else SbzRed)
                     )
                     Text(
-                        text = "Sesión global 0: ${if (engineStatus.globalSessionAttached) "Vinculado" else "Independiente"}",
+                        text = "Sesión global 0: ${if (engineStatus.globalSessionAttached) "Vinculada" else "Independiente"}",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = SbzTextSecondary
@@ -186,11 +186,11 @@ private fun MasterStatusCard(
                 )
 
                 Text(
-                    text = "Recuperar control",
+                    text = "Reclaim",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = SbzAmber,
-                    modifier = Modifier.clickable { onRecuperar control() }
+                    modifier = Modifier.clickable { onReclaim() }
                 )
             }
 
@@ -199,13 +199,13 @@ private fun MasterStatusCard(
             // Active Preset indicator
             Row(
                 modifier = Modifier
-                    .fillMaxAncho()
+                    .fillMaxWidth()
                     .clickable { onOpenPresets() },
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Preajuste: $currentPresetName",
+                    text = "Preset: $currentPresetName",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = SbzTextSecondary
@@ -230,19 +230,19 @@ private fun MasterGainSection(
     onBalanceChange: (Float) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxAncho(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = SbzCardBg),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "GANANCIA DE SALIDA MAESTRA",
+                    text = "GANANCIA DE SALIDA PRINCIPAL",
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
@@ -271,9 +271,9 @@ private fun MasterGainSection(
 
             // Balance & Headroom indicators
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Balance L/R: ${if (balance == 0f) "Centro" else if (balance < 0f) "L %.0f%%".format(-balance * 100f) else "R %.0f%%".format(balance * 100f)}",
@@ -303,12 +303,12 @@ private fun QuickPresetsRow(
 ) {
     Column {
         Row(
-            modifier = Modifier.fillMaxAncho(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CentroVertically
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "PREAJUSTES DSP",
+                text = "PRESETS DSP",
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -360,16 +360,16 @@ private fun ToneQuickSection(
     onExpand: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxAncho(),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = SbzCardBg),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "TONO DE 3 BANDAS",
@@ -389,7 +389,7 @@ private fun ToneQuickSection(
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 KnobControl(
@@ -433,7 +433,7 @@ private fun DspStagesGrid(
         )
 
         Row(
-            modifier = Modifier.fillMaxAncho(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ModuleCard(
@@ -453,12 +453,12 @@ private fun DspStagesGrid(
         }
 
         Row(
-            modifier = Modifier.fillMaxAncho(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ModuleCard(
                 title = "Espacial",
-                subtitle = if (config.virtualizerEnabled) "${config.virtualizerStrength / 10}% Ancho" else "Bypass",
+                subtitle = if (config.virtualizerEnabled) "${config.virtualizerStrength / 10}% de amplitud" else "Omitido",
                 isActive = config.isEnabled && config.virtualizerEnabled,
                 modifier = Modifier.weight(1f),
                 onClick = { onNavigateToTab(4) }
@@ -493,9 +493,9 @@ private fun ModuleCard(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
-                modifier = Modifier.fillMaxAncho(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CentroVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = title,

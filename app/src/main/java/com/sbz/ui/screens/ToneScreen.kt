@@ -41,14 +41,14 @@ fun ToneScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "ETAPA DE TONO TIPO ANALÓGICO",
+                    text = "ETAPA DE TONO ESTILO ANALÓGICO",
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     color = SbzCyan
                 )
                 Text(
-                    text = "Filtros shelving de graves, medios de pico y agudos",
+                    text = "Filtros Low-Shelf, de pico en medios y High-Shelf",
                     fontSize = 11.sp,
                     color = SbzTextSecondary
                 )
@@ -62,7 +62,7 @@ fun ToneScreen(
                     KnobControl(
                         value = config.toneBassDb,
                         range = -12f..12f,
-                        label = "Graves (bajos)",
+                        label = "Graves (Bajos)",
                         unit = "dB",
                         onValueChange = { viewModel.setTone(it, config.toneMidDb, config.toneTrebleDb) }
                     )
@@ -76,7 +76,7 @@ fun ToneScreen(
                     KnobControl(
                         value = config.toneTrebleDb,
                         range = -12f..12f,
-                        label = "Agudos (altos)",
+                        label = "Agudos (Altos)",
                         unit = "dB",
                         onValueChange = { viewModel.setTone(config.toneBassDb, config.toneMidDb, it) }
                     )
@@ -106,7 +106,7 @@ fun ToneScreen(
                             color = SbzTextPrimary
                         )
                         Text(
-                            text = "Mejora armónica de subgraves",
+                            text = "Realce armónico de subgraves",
                             fontSize = 11.sp,
                             color = SbzTextSecondary
                         )
@@ -114,7 +114,7 @@ fun ToneScreen(
 
                     Switch(
                         checked = config.bassBoostEnabled,
-                        onCheckedChange = { viewModel.setBassBoost(it, config.bassBoostIntensidad) },
+                        onCheckedChange = { viewModel.setBassBoost(it, config.bassBoostStrength) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = SbzCyan,
                             checkedTrackColor = SbzCyanDim
@@ -134,7 +134,7 @@ fun ToneScreen(
                         color = SbzTextSecondary
                     )
                     Text(
-                        text = "${config.bassBoostIntensidad / 10}%",
+                        text = "${config.bassBoostStrength / 10}%",
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         color = SbzCyan
@@ -142,7 +142,7 @@ fun ToneScreen(
                 }
 
                 Slider(
-                    value = config.bassBoostIntensidad.toFloat(),
+                    value = config.bassBoostStrength.toFloat(),
                     onValueChange = { viewModel.setBassBoost(config.bassBoostEnabled, it.toInt().toShort()) },
                     valueRange = 0f..1000f,
                     enabled = config.bassBoostEnabled,
@@ -218,9 +218,9 @@ fun ToneScreen(
                     )
                     Text(
                         text = if (safeguardDb < 0f)
-                            "Atenuación dinámica aplicada para evitar recortes por la suma de EQ y tono"
+                            "Atenuación dinámica aplicada para evitar clipping por el aumento acumulado de EQ y tono"
                         else
-                            "Niveles de ganancia de salida dentro de límites lineales seguros sin recorte",
+                            "Niveles de ganancia de salida dentro de límites lineales seguros sin clipping",
                         fontSize = 11.sp,
                         color = SbzTextSecondary
                     )

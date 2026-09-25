@@ -10,8 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Cerrar
-import androidx.compose.material.icons.filled.Eliminar
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +34,7 @@ fun PresetsDialog(
 ) {
     val presets by viewModel.presets.collectAsState()
     val selectedId by viewModel.selectedPresetId.collectAsState()
-    var showGuardarDialog by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -58,7 +58,7 @@ fun PresetsDialog(
                 ) {
                     Column {
                         Text(
-                            text = "BIBLIOTECA DE PREAJUSTES",
+                            text = "BIBLIOTECA DE PRESETS",
                             fontSize = 14.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -72,15 +72,15 @@ fun PresetsDialog(
                     }
 
                     IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Cerrar, contentDescription = "Cerrar", tint = SbzTextSecondary)
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar", tint = SbzTextSecondary)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Guardar Current Config Button
+                // Save Current Config Button
                 Button(
-                    onClick = { showGuardarDialog = true },
+                    onClick = { showSaveDialog = true },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SbzCyan, contentColor = SbzBackground)
@@ -106,7 +106,7 @@ fun PresetsDialog(
                                 viewModel.applyPreset(preset)
                                 onDismiss()
                             },
-                            onEliminar = {
+                            onDelete = {
                                 viewModel.deletePreset(preset.id)
                             }
                         )
@@ -116,12 +116,12 @@ fun PresetsDialog(
         }
     }
 
-    if (showGuardarDialog) {
-        GuardarPresetDialog(
-            onDismiss = { showGuardarDialog = false },
-            onGuardar = { name ->
+    if (showSaveDialog) {
+        SavePresetDialog(
+            onDismiss = { showSaveDialog = false },
+            onSave = { name ->
                 viewModel.saveNewPreset(name)
-                showGuardarDialog = false
+                showSaveDialog = false
             }
         )
     }
@@ -132,7 +132,7 @@ private fun PresetItemRow(
     preset: Preset,
     isSelected: Boolean,
     onSelect: () -> Unit,
-    onEliminar: () -> Unit
+    onDelete: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -169,7 +169,7 @@ private fun PresetItemRow(
                     color = if (isSelected) SbzCyan else SbzTextPrimary
                 )
                 Text(
-                    text = if (preset.isSystem) "Preajuste de fábrica" else "Preajuste personalizado",
+                    text = if (preset.isSystem) "Preset de fábrica" else "Preset personalizado",
                     fontSize = 10.sp,
                     color = SbzTextSecondary
                 )
@@ -178,11 +178,11 @@ private fun PresetItemRow(
 
         if (!preset.isSystem) {
             IconButton(
-                onClick = onEliminar,
+                onClick = onDelete,
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Eliminar,
+                    imageVector = Icons.Default.Delete,
                     contentDescription = "Eliminar",
                     tint = SbzRed.copy(alpha = 0.8f),
                     modifier = Modifier.size(16.dp)
@@ -193,21 +193,21 @@ private fun PresetItemRow(
 }
 
 @Composable
-private fun GuardarPresetDialog(
+private fun SavePresetDialog(
     onDismiss: () -> Unit,
-    onGuardar: (String) -> Unit
+    onSave: (String) -> Unit
 ) {
     var presetName by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Guardar preajuste", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SbzTextPrimary)
+            Text("Guardar preset", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = SbzTextPrimary)
         },
         text = {
             Column {
                 Text(
-                    "Enter a name for your custom DSP configuration:",
+                    "Ingresa un nombre para tu configuración DSP personalizada:",
                     fontSize = 12.sp,
                     color = SbzTextSecondary
                 )
@@ -216,7 +216,7 @@ private fun GuardarPresetDialog(
                     value = presetName,
                     onValueChange = { presetName = it },
                     singleLine = true,
-                    placeholder = { Text("ej. Mi ecualización de estudio", fontSize = 12.sp) },
+                    placeholder = { Text("ej. Mi EQ de estudio", fontSize = 12.sp) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = SbzCyan,
                         unfocusedBorderColor = SbzBorder
@@ -226,7 +226,7 @@ private fun GuardarPresetDialog(
         },
         confirmButton = {
             Button(
-                onClick = { if (presetName.isNotBlank()) onGuardar(presetName.trim()) },
+                onClick = { if (presetName.isNotBlank()) onSave(presetName.trim()) },
                 enabled = presetName.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = SbzCyan, contentColor = SbzBackground)
             ) {

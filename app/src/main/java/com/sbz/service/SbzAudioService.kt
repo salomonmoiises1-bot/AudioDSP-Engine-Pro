@@ -93,9 +93,7 @@ class SbzAudioService : Service() {
         val action = intent?.action ?: ACTION_START
         Log.d(TAG, "onStartCommand action: $action")
 
-        if (action != ACTION_STOP) {
-            startForeground(NOTIFICATION_ID, buildNotification())
-        }
+        startForeground(NOTIFICATION_ID, buildNotification())
 
         when (action) {
             ACTION_START -> {
@@ -111,8 +109,8 @@ class SbzAudioService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_TOGGLE_DSP -> {
-                val newActivard = !activeConfig.isActivard
-                updateConfig(activeConfig.copy(isActivard = newActivard))
+                val newEnabled = !activeConfig.isEnabled
+                updateConfig(activeConfig.copy(isEnabled = newEnabled))
             }
             ACTION_ATTACH_SESSION -> {
                 val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
@@ -178,7 +176,7 @@ class SbzAudioService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val statusText = if (activeConfig.isActivard) "DSP activo • Procesando" else "DSP en bypass"
+        val statusText = if (activeConfig.isEnabled) "DSP activo • Procesando" else "DSP omitido"
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("sBz Audio DSP")
@@ -188,7 +186,7 @@ class SbzAudioService : Service() {
             .setOngoing(true)
             .addAction(
                 0,
-                if (activeConfig.isActivard) "By-pass" else "Activar",
+                if (activeConfig.isEnabled) "Omitir" else "Activar",
                 pToggle
             )
             .addAction(0, "Detener motor", pStop)

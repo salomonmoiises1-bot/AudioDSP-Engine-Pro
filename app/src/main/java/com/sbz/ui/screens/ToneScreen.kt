@@ -1,6 +1,6 @@
 package com.sbz.ui.screens
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,28 +32,23 @@ fun ToneScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-
+        // 3-Band Tone Stage
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, SbzBorder)
+            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "ETAPA DE TONO ESTILO ANALÓGICO",
+                    text = "ETAPA DE TONO TIPO ANALÓGICO",
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     color = SbzCyan
                 )
-
                 Text(
-                    text = "Filtros Low-Shelf, Peaking de medios y High-Shelf",
+                    text = "Filtros shelving de graves, medios de pico y agudos",
                     fontSize = 11.sp,
                     color = SbzTextSecondary
                 )
@@ -67,63 +62,36 @@ fun ToneScreen(
                     KnobControl(
                         value = config.toneBassDb,
                         range = -12f..12f,
-                        label = "Graves (Bajos)",
-                        unit = "dB"
-                    ) {
-                        viewModel.setTone(
-                            it,
-                            config.toneMidDb,
-                            config.toneTrebleDb
-                        )
-                    }
-
+                        label = "Graves (bajos)",
+                        unit = "dB",
+                        onValueChange = { viewModel.setTone(it, config.toneMidDb, config.toneTrebleDb) }
+                    )
                     KnobControl(
                         value = config.toneMidDb,
                         range = -12f..12f,
                         label = "Medios (1 kHz)",
-                        unit = "dB"
-                    ) {
-                        viewModel.setTone(
-                            config.toneBassDb,
-                            it,
-                            config.toneTrebleDb
-                        )
-                    }
-
+                        unit = "dB",
+                        onValueChange = { viewModel.setTone(config.toneBassDb, it, config.toneTrebleDb) }
+                    )
                     KnobControl(
                         value = config.toneTrebleDb,
                         range = -12f..12f,
-                        label = "Agudos (Altos)",
-                        unit = "dB"
-                    ) {
-                        viewModel.setTone(
-                            config.toneBassDb,
-                            config.toneMidDb,
-                            it
-                        )
-                    }
+                        label = "Agudos (altos)",
+                        unit = "dB",
+                        onValueChange = { viewModel.setTone(config.toneBassDb, config.toneMidDb, it) }
+                    )
                 }
             }
         }
 
+        // Bass Boost Stage
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                1.dp,
-                if (config.bassBoostEnabled) {
-                    SbzCyan.copy(alpha = 0.4f)
-                } else {
-                    SbzBorder
-                }
-            )
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.bassBoostEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -137,9 +105,8 @@ fun ToneScreen(
                             fontWeight = FontWeight.Bold,
                             color = SbzTextPrimary
                         )
-
                         Text(
-                            text = "Realce armónico de subgraves",
+                            text = "Mejora armónica de subgraves",
                             fontSize = 11.sp,
                             color = SbzTextSecondary
                         )
@@ -147,12 +114,7 @@ fun ToneScreen(
 
                     Switch(
                         checked = config.bassBoostEnabled,
-                        onCheckedChange = {
-                            viewModel.setBassBoost(
-                                it,
-                                config.bassBoostStrength
-                            )
-                        },
+                        onCheckedChange = { viewModel.setBassBoost(it, config.bassBoostIntensidad) },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = SbzCyan,
                             checkedTrackColor = SbzCyanDim
@@ -171,9 +133,8 @@ fun ToneScreen(
                         fontSize = 12.sp,
                         color = SbzTextSecondary
                     )
-
                     Text(
-                        text = "${config.bassBoostStrength / 10}%",
+                        text = "${config.bassBoostIntensidad / 10}%",
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         color = SbzCyan
@@ -181,13 +142,8 @@ fun ToneScreen(
                 }
 
                 Slider(
-                    value = config.bassBoostStrength.toFloat(),
-                    onValueChange = {
-                        viewModel.setBassBoost(
-                            config.bassBoostEnabled,
-                            it.toInt().toShort()
-                        )
-                    },
+                    value = config.bassBoostIntensidad.toFloat(),
+                    onValueChange = { viewModel.setBassBoost(config.bassBoostEnabled, it.toInt().toShort()) },
                     valueRange = 0f..1000f,
                     enabled = config.bassBoostEnabled,
                     colors = SliderDefaults.colors(
@@ -198,17 +154,14 @@ fun ToneScreen(
             }
         }
 
+        // Pre-Gain Stage
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, SbzBorder)
+            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -221,13 +174,8 @@ fun ToneScreen(
                         fontWeight = FontWeight.Bold,
                         color = SbzTextPrimary
                     )
-
                     Text(
-                        text = if (config.preGainDb > 0f) {
-                            "+%.1f dB".format(config.preGainDb)
-                        } else {
-                            "%.1f dB".format(config.preGainDb)
-                        },
+                        text = if (config.preGainDb > 0f) "+%.1f dB".format(config.preGainDb) else "%.1f dB".format(config.preGainDb),
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         color = SbzAmber
@@ -236,11 +184,9 @@ fun ToneScreen(
 
                 Slider(
                     value = config.preGainDb,
-                    onValueChange = {
-                        viewModel.setPreGain(it)
-                    },
+                    onValueChange = { viewModel.setPreGain(it) },
                     valueRange = -12f..12f,
-                    steps = 47,
+                    steps = 47, // 0.5 dB steps
                     colors = SliderDefaults.colors(
                         thumbColor = SbzAmber,
                         activeTrackColor = SbzAmber
@@ -249,66 +195,43 @@ fun ToneScreen(
             }
         }
 
+        // Headroom Safeguard Protection Status
         val safeguardDb = config.computeHeadroomSafeguard()
-
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzSurface
-            ),
+            colors = CardDefaults.cardColors(containerColor = SbzSurface),
             shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                1.dp,
-                if (safeguardDb < 0f) {
-                    SbzAmber.copy(alpha = 0.5f)
-                } else {
-                    SbzBorder
-                }
-            )
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (safeguardDb < 0f) SbzAmber.copy(alpha = 0.5f) else SbzBorder)
         ) {
             Row(
                 modifier = Modifier.padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "PROTECCIÓN DE HEADROOM",
+                        text = "PROTECCIÓN DE MARGEN",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
-                        color = if (safeguardDb < 0f) {
-                            SbzAmber
-                        } else {
-                            SbzGreen
-                        }
+                        color = if (safeguardDb < 0f) SbzAmber else SbzGreen
                     )
-
                     Text(
-                        text = if (safeguardDb < 0f) {
-                            "Atenuación dinámica aplicada para evitar saturación por el realce acumulado del EQ/Tono"
-                        } else {
-                            "Niveles de ganancia de salida dentro de límites lineales seguros, sin saturación"
-                        },
+                        text = if (safeguardDb < 0f)
+                            "Atenuación dinámica aplicada para evitar recortes por la suma de EQ y tono"
+                        else
+                            "Niveles de ganancia de salida dentro de límites lineales seguros sin recorte",
                         fontSize = 11.sp,
                         color = SbzTextSecondary
                     )
                 }
-
                 Spacer(modifier = Modifier.width(8.dp))
-
                 Text(
                     text = "%.1f dB".format(safeguardDb),
                     fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    color = if (safeguardDb < 0f) {
-                        SbzAmber
-                    } else {
-                        SbzGreen
-                    }
+                    color = if (safeguardDb < 0f) SbzAmber else SbzGreen
                 )
             }
         }

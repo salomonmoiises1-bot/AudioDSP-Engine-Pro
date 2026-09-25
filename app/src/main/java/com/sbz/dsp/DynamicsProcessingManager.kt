@@ -8,9 +8,9 @@ import com.sbz.dsp.model.MdrcBandConfig
 import kotlin.math.*
 
 /**
- * Robust manager for Android's native DynamicsProcessing AudioEffect.
- * Manages creation, capability adaptation, stereo channels, Pre-EQ, MBC, Post-EQ,
- * Limiter, real-time parameter synchronization, and control loss/reclaim.
+ * Gestor robusto para el efecto nativo DynamicsProcessing de Android en sBz.
+ * Administra la cadena DSP completa: Pre-EQ, Ecualizador de 32 bandas, MDRC,
+ * Limitador, AutoGain y sincronización de parámetros en tiempo real.
  */
 class DynamicsProcessingManager(
     val audioSessionId: Int,
@@ -18,9 +18,8 @@ class DynamicsProcessingManager(
 ) {
     companion object {
         private const val TAG = "DynamicsProcManager"
-        private const val PRIORITY = 100 // High priority to hold effect control
+        private const val PRIORITY = 100 // Alta prioridad para retener el control del efecto
 
-        // Fallback band capabilities for devices with limited DSP memory
         private const val TARGET_EQ_BANDS = 32
         private const val FALLBACK_EQ_BANDS_16 = 16
         private const val FALLBACK_EQ_BANDS_8 = 8
@@ -36,10 +35,6 @@ class DynamicsProcessingManager(
         initializeEffect()
     }
 
-    /**
-     * Attempts to create DynamicsProcessing with optimal configuration,
-     * falling back gracefully if device vendor HAL has lower band limits.
-     */
     private fun initializeEffect() {
         release()
 
@@ -50,7 +45,7 @@ class DynamicsProcessingManager(
                 val effect = DynamicsProcessing(PRIORITY, audioSessionId, config)
                 effect.setControlStatusListener { _, controlGranted ->
                     hasControl = controlGranted
-                    Log.d(TAG, "AudioSession $audioSessionId control status changed: $controlGranted")
+                    Log.d(TAG, "Estado de control en AudioSession $audioSessionId cambiado: $controlGranted")
                     if (!controlGranted) {
                         onControlLostListener?.invoke()
                     }
@@ -58,43 +53,38 @@ class DynamicsProcessingManager(
                 dp = effect
                 supportedEqBands = eqBands
                 hasControl = effect.hasControl()
-                Log.i(TAG, "Successfully initialized DynamicsProcessing for session $audioSessionId with $eqBands EQ bands")
+                Log.i(TAG, "DynamicsProcessing inicializado con éxito para sesión $audioSessionId con $eqBands bandas EQ")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Failed initializing DynamicsProcessing with $eqBands bands for session $audioSessionId: ${e.message}")
+                Log.w(TAG, "Fallo al inicializar DynamicsProcessing con $eqBands bandas: ${e.message}")
             }
         }
 
-        // Final fallback: default single-parameter constructor
         try {
             val fallbackEffect = DynamicsProcessing(audioSessionId)
             dp = fallbackEffect
             supportedEqBands = 8
             hasControl = fallbackEffect.hasControl()
-            Log.i(TAG, "Initialized default fallback DynamicsProcessing for session $audioSessionId")
+            Log.i(TAG, "DynamicsProcessing inicializado con configuración de respaldo por defecto")
         } catch (e: Exception) {
-            Log.e(TAG, "FATAL: Could not initialize DynamicsProcessing for session $audioSessionId: ${e.message}", e)
+            Log.e(TAG, "FATAL: No se pudo inicializar DynamicsProcessing: ${e.message}", e)
             dp = null
         }
     }
 
-    /**
-     * Builds standard 2-channel (stereo) DynamicsProcessing configuration.
-     */
     private fun buildDynamicsConfig(eqBands: Int): DynamicsProcessing.Config {
         val builder = DynamicsProcessing.Config.Builder(
             DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-            2,     // 2 stereo channels
-            true,  // PreEQ in use
+            2,     // Canales estéreo
+            true,  // PreEQ activo
             eqBands,
-            true,  // MBC in use
+            true,  // MBC activo
             MBC_BANDS,
-            true,  // PostEQ in use
+            true,  // PostEQ activo
             eqBands,
-            true   // Limiter in use
+            true   // Limitador activo
         )
 
-        // Set default frequency points for preEQ and postEQ
         val freqs = if (eqBands == TARGET_EQ_BANDS) {
             DspConfig.FREQUENCIES
         } else {
@@ -111,7 +101,6 @@ class DynamicsProcessingManager(
             postEq.setBand(i, eqBand)
         }
 
-        // Default MBC bands
         val mbc = DynamicsProcessing.Mbc(true, true, MBC_BANDS)
         val defaultBands = DspConfig.defaultMdrcBands()
         for (i in 0 until MBC_BANDS) {
@@ -123,31 +112,29 @@ class DynamicsProcessingManager(
                 bandDef.releaseMs,
                 bandDef.ratio,
                 bandDef.thresholdDb,
-                0.0f, // knee width
-                0.0f, // noise gate
-                0.0f, // expander ratio
-                0.0f, // preGain
+                2.0f,
+                -70f,
+                1.0f,
+                0.0f,
                 bandDef.makeupGainDb
             )
             mbc.setBand(i, mbcBand)
         }
 
-        // Default Limiter
         val limiter = DynamicsProcessing.Limiter(
             true,
             true,
-            0,     // linkGroup 0
-            1.0f,  // attack
-            50.0f, // release
-            20.0f, // ratio
-            -0.5f, // threshold
-            0.0f   // postGain
+            0,
+            1.0f,
+            50.0f,
+            20.0f,
+            -0.5f,
+            0.0f
         )
 
         builder.setPreferredFrameDuration(10.0f)
         val baseConfig = builder.build()
 
-        // Set per-channel stages
         for (ch in 0 until 2) {
             baseConfig.setPreEqByChannelIndex(ch, preEq)
             baseConfig.setMbcByChannelIndex(ch, mbc)
@@ -158,9 +145,6 @@ class DynamicsProcessingManager(
         return baseConfig
     }
 
-    /**
-     * Apply the entire DspConfig state in real time to the hardware DSP.
-     */
     @Synchronized
     fun applyConfig(config: DspConfig) {
         val effect = dp ?: run {
@@ -169,7 +153,6 @@ class DynamicsProcessingManager(
         }
 
         try {
-            // Master toggle
             if (effect.enabled != config.isEnabled) {
                 effect.enabled = config.isEnabled
                 isEffectEnabled = config.isEnabled
@@ -177,7 +160,6 @@ class DynamicsProcessingManager(
 
             if (!config.isEnabled) return
 
-            // Compute Balance factors
             val bal = config.balance.coerceIn(-1.0f, 1.0f)
             val leftGainFactor = if (bal <= 0f) 1.0f else (1.0f - bal)
             val rightGainFactor = if (bal >= 0f) 1.0f else (1.0f + bal)
@@ -185,30 +167,22 @@ class DynamicsProcessingManager(
             val leftBalanceDb = if (leftGainFactor > 0.001f) 20.0f * log10(leftGainFactor) else -60.0f
             val rightBalanceDb = if (rightGainFactor > 0.001f) 20.0f * log10(rightGainFactor) else -60.0f
 
-            // Safeguard headroom calculation
             val safeguardHeadroomDb = config.computeHeadroomSafeguard()
 
-            // 1. Pre-Gain & Balance
             val totalLeftInputGain = (config.preGainDb + leftBalanceDb + safeguardHeadroomDb).coerceIn(-60.0f, 24.0f)
             val totalRightInputGain = (config.preGainDb + rightBalanceDb + safeguardHeadroomDb).coerceIn(-60.0f, 24.0f)
 
             effect.setInputGainbyChannel(0, totalLeftInputGain)
             effect.setInputGainbyChannel(1, totalRightInputGain)
 
-            // 2. Pre-EQ: Combined Tone (Bass, Mid, Treble) + Lower Spectrum Control
+            // Aplicación escalonada de la cadena DSP
             applyToneAndPreEq(effect, config)
-
-            // 3. Post-EQ: 32-Band Equalizer (Full band response enabled)
             apply32BandEq(effect, config)
-
-            // 4. MDRC (Multiband Compressor)
             applyMdrc(effect, config)
-
-            // 5. Limiter & Protection (with Master Gain)
             applyLimiterAndMasterGain(effect, config)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error applying DSP config on session $audioSessionId: ${e.message}", e)
+            Log.e(TAG, "Error aplicando configuración DSP en sesión $audioSessionId: ${e.message}", e)
         }
     }
 
@@ -242,7 +216,6 @@ class DynamicsProcessingManager(
             }
 
             val preGain = (toneOffsetDb + bassBoostDb).coerceIn(-15.0f, 15.0f)
-
             val preEqBand = DynamicsProcessing.EqBand(true, freq, preGain)
             effect.setPreEqBandByChannelIndex(0, i, preEqBand)
             effect.setPreEqBandByChannelIndex(1, i, preEqBand)
@@ -262,9 +235,8 @@ class DynamicsProcessingManager(
             val requestedGain = mappedGains.getOrElse(i) { 0f }
             val freq = freqs[i]
 
-            // OPTIMIZACIÓN INGENIERIL: Entregamos el 100% de la ganancia solicitada 
-            // en Post-EQ para todas las frecuencias (incluyendo 25Hz - 200Hz),
-            // evitando la atenuación previa que silenciaba las bandas graves.
+            // CORRECCIÓN CLAVE: Entrega del 100% de ganancia en Post-EQ para todo el espectro,
+            // permitiendo que las frecuencias graves (25Hz - 200Hz) respondan con potencia real.
             val gain = requestedGain
 
             val eqBand = DynamicsProcessing.EqBand(true, freq, gain.coerceIn(-15.0f, 15.0f))
@@ -329,13 +301,12 @@ class DynamicsProcessingManager(
         try {
             dp?.let { effect ->
                 if (!effect.hasControl()) {
-                    Log.d(TAG, "Reclaiming DynamicsProcessing control for session $audioSessionId...")
                     effect.enabled = isEffectEnabled
                     hasControl = effect.hasControl()
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed reclaiming control on session $audioSessionId: ${e.message}")
+            Log.w(TAG, "Fallo al reclamar control en sesión $audioSessionId: ${e.message}")
         }
     }
 
@@ -346,7 +317,7 @@ class DynamicsProcessingManager(
             dp?.enabled = false
             dp?.release()
         } catch (e: Exception) {
-            Log.w(TAG, "Error releasing DynamicsProcessing on session $audioSessionId: ${e.message}")
+            Log.w(TAG, "Error liberando DynamicsProcessing: ${e.message}")
         } finally {
             dp = null
             isEffectEnabled = false

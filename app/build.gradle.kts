@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    // 1. Añadido para permitir serialización JSON en presets
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -74,6 +76,12 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.navigation.compose)
+
+    // 2. Añadido: Persistencia DataStore para los presets y configuración DSP
+    implementation(libs.androidx.datastore.preferences)
+
+    // 3. Añadido: Motor JSON para exportar/importar configuraciones personalizadas
+    implementation(libs.kotlinx.serialization.json)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

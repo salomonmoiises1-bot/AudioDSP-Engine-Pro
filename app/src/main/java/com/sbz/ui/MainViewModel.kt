@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sbz.data.PresetRepository
@@ -190,7 +191,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val intent = Intent(getApplication(), SbzAudioService::class.java).apply {
                 action = SbzAudioService.ACTION_RECLAIM_CONTROL
             }
-            getApplication<Application>().startService(intent)
+            ContextCompat.startForegroundService(getApplication(), intent)
         }
     }
 

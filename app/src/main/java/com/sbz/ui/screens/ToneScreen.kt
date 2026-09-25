@@ -1,5 +1,6 @@
 package com.sbz.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,119 +18,298 @@ import com.sbz.ui.components.KnobControl
 import com.sbz.ui.theme.*
 
 @Composable
-fun ToneScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
+fun ToneScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
     val config by viewModel.config.collectAsState()
     val scrollState = rememberScrollState()
 
     Column(
-        modifier.fillMaxSize().verticalScroll(scrollState).padding(16.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+
         Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = SbzCardBg
+            ),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
+            border = BorderStroke(1.dp, SbzBorder)
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Text("ETAPA DE TONO ESTILO ANALÓGICO", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
-                Text("Filtros Low-Shelf, Peaking de medios y High-Shelf", 11.sp, color = SbzTextSecondary)
-                Spacer(Modifier.height(20.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-                    KnobControl(config.toneBassDb, -12f..12f, "Graves (Bajos)", "dB") {
-                        viewModel.setTone(it, config.toneMidDb, config.toneTrebleDb)
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "ETAPA DE TONO ESTILO ANALÓGICO",
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = SbzCyan
+                )
+
+                Text(
+                    text = "Filtros Low-Shelf, Peaking de medios y High-Shelf",
+                    fontSize = 11.sp,
+                    color = SbzTextSecondary
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    KnobControl(
+                        value = config.toneBassDb,
+                        range = -12f..12f,
+                        label = "Graves (Bajos)",
+                        unit = "dB"
+                    ) {
+                        viewModel.setTone(
+                            it,
+                            config.toneMidDb,
+                            config.toneTrebleDb
+                        )
                     }
-                    KnobControl(config.toneMidDb, -12f..12f, "Medios (1 kHz)", "dB") {
-                        viewModel.setTone(config.toneBassDb, it, config.toneTrebleDb)
+
+                    KnobControl(
+                        value = config.toneMidDb,
+                        range = -12f..12f,
+                        label = "Medios (1 kHz)",
+                        unit = "dB"
+                    ) {
+                        viewModel.setTone(
+                            config.toneBassDb,
+                            it,
+                            config.toneTrebleDb
+                        )
                     }
-                    KnobControl(config.toneTrebleDb, -12f..12f, "Agudos (Altos)", "dB") {
-                        viewModel.setTone(config.toneBassDb, config.toneMidDb, it)
+
+                    KnobControl(
+                        value = config.toneTrebleDb,
+                        range = -12f..12f,
+                        label = "Agudos (Altos)",
+                        unit = "dB"
+                    ) {
+                        viewModel.setTone(
+                            config.toneBassDb,
+                            config.toneMidDb,
+                            it
+                        )
                     }
                 }
             }
         }
 
         Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = SbzCardBg
+            ),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp,
-                if (config.bassBoostEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)
+            border = BorderStroke(
+                1.dp,
+                if (config.bassBoostEnabled) {
+                    SbzCyan.copy(alpha = 0.4f)
+                } else {
+                    SbzBorder
+                }
+            )
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column {
-                        Text("REFUERZO DE GRAVES (EFECTO DE HARDWARE)", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzTextPrimary)
-                        Text("Realce armónico de subgraves", 11.sp, color = SbzTextSecondary)
+                        Text(
+                            text = "REFUERZO DE GRAVES (EFECTO DE HARDWARE)",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzTextPrimary
+                        )
+
+                        Text(
+                            text = "Realce armónico de subgraves",
+                            fontSize = 11.sp,
+                            color = SbzTextSecondary
+                        )
                     }
+
                     Switch(
-                        config.bassBoostEnabled,
-                        { viewModel.setBassBoost(it, config.bassBoostStrength) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = SbzCyan, checkedTrackColor = SbzCyanDim)
+                        checked = config.bassBoostEnabled,
+                        onCheckedChange = {
+                            viewModel.setBassBoost(
+                                it,
+                                config.bassBoostStrength
+                            )
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SbzCyan,
+                            checkedTrackColor = SbzCyanDim
+                        )
                     )
                 }
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Text("Intensidad", 12.sp, color = SbzTextSecondary)
-                    Text("${config.bassBoostStrength / 10}%", 12.sp, FontFamily.Monospace, color = SbzCyan)
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Intensidad",
+                        fontSize = 12.sp,
+                        color = SbzTextSecondary
+                    )
+
+                    Text(
+                        text = "${config.bassBoostStrength / 10}%",
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = SbzCyan
+                    )
                 }
+
                 Slider(
-                    config.bassBoostStrength.toFloat(),
-                    { viewModel.setBassBoost(config.bassBoostEnabled, it.toInt().toShort()) },
+                    value = config.bassBoostStrength.toFloat(),
+                    onValueChange = {
+                        viewModel.setBassBoost(
+                            config.bassBoostEnabled,
+                            it.toInt().toShort()
+                        )
+                    },
                     valueRange = 0f..1000f,
                     enabled = config.bassBoostEnabled,
-                    colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan)
+                    colors = SliderDefaults.colors(
+                        thumbColor = SbzCyan,
+                        activeTrackColor = SbzCyan
+                    )
                 )
             }
         }
 
         Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = SbzCardBg
+            ),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
+            border = BorderStroke(1.dp, SbzBorder)
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Text("PRE-GANANCIA DE ENTRADA", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzTextPrimary)
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        if (config.preGainDb > 0f) "+%.1f dB".format(config.preGainDb) else "%.1f dB".format(config.preGainDb),
-                        12.sp, FontFamily.Monospace, color = SbzAmber
+                        text = "PRE-GANANCIA DE ENTRADA",
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = SbzTextPrimary
+                    )
+
+                    Text(
+                        text = if (config.preGainDb > 0f) {
+                            "+%.1f dB".format(config.preGainDb)
+                        } else {
+                            "%.1f dB".format(config.preGainDb)
+                        },
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = SbzAmber
                     )
                 }
+
                 Slider(
-                    config.preGainDb,
-                    { viewModel.setPreGain(it) },
+                    value = config.preGainDb,
+                    onValueChange = {
+                        viewModel.setPreGain(it)
+                    },
                     valueRange = -12f..12f,
                     steps = 47,
-                    colors = SliderDefaults.colors(thumbColor = SbzAmber, activeTrackColor = SbzAmber)
+                    colors = SliderDefaults.colors(
+                        thumbColor = SbzAmber,
+                        activeTrackColor = SbzAmber
+                    )
                 )
             }
         }
 
         val safeguardDb = config.computeHeadroomSafeguard()
+
         Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzSurface),
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = SbzSurface
+            ),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp,
-                if (safeguardDb < 0f) SbzAmber.copy(alpha = 0.5f) else SbzBorder)
+            border = BorderStroke(
+                1.dp,
+                if (safeguardDb < 0f) {
+                    SbzAmber.copy(alpha = 0.5f)
+                } else {
+                    SbzBorder
+                }
+            )
         ) {
-            Row(Modifier.padding(14.dp), Alignment.CenterVertically, Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) {
-                    Text("PROTECCIÓN DE HEADROOM", 11.sp, FontFamily.Monospace, FontWeight.Bold,
-                        color = if (safeguardDb < 0f) SbzAmber else SbzGreen)
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
-                        if (safeguardDb < 0f)
+                        text = "PROTECCIÓN DE HEADROOM",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = if (safeguardDb < 0f) {
+                            SbzAmber
+                        } else {
+                            SbzGreen
+                        }
+                    )
+
+                    Text(
+                        text = if (safeguardDb < 0f) {
                             "Atenuación dinámica aplicada para evitar saturación por el realce acumulado del EQ/Tono"
-                        else
-                            "Niveles de ganancia de salida dentro de límites lineales seguros, sin saturación",
-                        11.sp, color = SbzTextSecondary
+                        } else {
+                            "Niveles de ganancia de salida dentro de límites lineales seguros, sin saturación"
+                        },
+                        fontSize = 11.sp,
+                        color = SbzTextSecondary
                     )
                 }
-                Spacer(Modifier.width(8.dp))
-                Text("%.1f dB".format(safeguardDb), 14.sp, FontFamily.Monospace, FontWeight.Bold,
-                    color = if (safeguardDb < 0f) SbzAmber else SbzGreen)
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "%.1f dB".format(safeguardDb),
+                    fontSize = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = if (safeguardDb < 0f) {
+                        SbzAmber
+                    } else {
+                        SbzGreen
+                    }
+                )
             }
         }
     }

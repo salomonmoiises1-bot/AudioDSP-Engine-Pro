@@ -28,19 +28,28 @@ sealed class Screen(val title: String, val icon: ImageVector) {
 }
 
 @Composable
-fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
+fun SbzApp(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
     var selectedTabIndex by remember { mutableStateOf(0) }
     var showPresetsDialog by remember { mutableStateOf(false) }
+
     val config by viewModel.config.collectAsState()
     val engineStatus by viewModel.engineStatus.collectAsState()
 
     val screens = listOf(
-        Screen.Dashboard, Screen.Equalizer, Screen.Tone,
-        Screen.Dynamics, Screen.Spatial, Screen.Output
+        Screen.Dashboard,
+        Screen.Equalizer,
+        Screen.Tone,
+        Screen.Dynamics,
+        Screen.Spatial,
+        Screen.Output
     )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+
         topBar = {
             TopAppBar(
                 title = {
@@ -48,51 +57,120 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("sBz", 20.sp, FontFamily.Monospace, FontWeight.Black, color = SbzCyan)
-                        Text("AUDIO DSP", 12.sp, FontFamily.Monospace, FontWeight.Medium, color = SbzTextSecondary)
+                        Text(
+                            text = "sBz",
+                            fontSize = 20.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Black,
+                            color = SbzCyan
+                        )
+
+                        Text(
+                            text = "AUDIO DSP",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            color = SbzTextSecondary
+                        )
+
                         Box(
-                            Modifier.clip(CircleShape)
+                            modifier = Modifier
+                                .clip(CircleShape)
                                 .background(
-                                    if (config.isEnabled && engineStatus.isRunning) SbzGreen.copy(alpha = 0.2f)
-                                    else SbzRed.copy(alpha = 0.2f)
+                                    if (config.isEnabled && engineStatus.isRunning) {
+                                        SbzGreen.copy(alpha = 0.2f)
+                                    } else {
+                                        SbzRed.copy(alpha = 0.2f)
+                                    }
                                 )
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                .padding(
+                                    horizontal = 8.dp,
+                                    vertical = 2.dp
+                                )
                         ) {
                             Text(
-                                if (config.isEnabled) "ACTIVO" else "DESACTIVADO",
-                                9.sp, FontFamily.Monospace, FontWeight.Bold,
-                                color = if (config.isEnabled && engineStatus.isRunning) SbzGreen else SbzRed
+                                text = if (config.isEnabled) {
+                                    "ACTIVO"
+                                } else {
+                                    "DESACTIVADO"
+                                },
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (
+                                    config.isEnabled &&
+                                    engineStatus.isRunning
+                                ) {
+                                    SbzGreen
+                                } else {
+                                    SbzRed
+                                }
                             )
                         }
                     }
                 },
+
                 actions = {
-                    IconButton({ showPresetsDialog = true }) {
-                        Icon(Icons.Default.Bookmark, "Preajustes", tint = SbzCyan)
+                    IconButton(
+                        onClick = {
+                            showPresetsDialog = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bookmark,
+                            contentDescription = "Preajustes",
+                            tint = SbzCyan
+                        )
                     }
                 },
+
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = SbzBackground,
                     titleContentColor = SbzTextPrimary
                 )
             )
         },
+
         bottomBar = {
-            NavigationBar(containerColor = SbzSurface, tonalElevation = 0.dp) {
+            NavigationBar(
+                containerColor = SbzSurface,
+                tonalElevation = 0.dp
+            ) {
                 screens.forEachIndexed { index, screen ->
+
                     val isSelected = selectedTabIndex == index
+
                     NavigationBarItem(
                         selected = isSelected,
-                        onClick = { selectedTabIndex = index },
-                        icon = { Icon(screen.icon, screen.title, Modifier.size(20.dp)) },
-                        label = {
-                            Text(
-                                screen.title, fontSize = 9.sp, maxLines = 1,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+
+                        onClick = {
+                            selectedTabIndex = index
+                        },
+
+                        icon = {
+                            Icon(
+                                imageVector = screen.icon,
+                                contentDescription = screen.title,
+                                modifier = Modifier.size(20.dp)
                             )
                         },
+
+                        label = {
+                            Text(
+                                text = screen.title,
+                                fontSize = 9.sp,
+                                maxLines = 1,
+                                fontWeight = if (isSelected) {
+                                    FontWeight.Bold
+                                } else {
+                                    FontWeight.Normal
+                                }
+                            )
+                        },
+
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = SbzCyan, selectedTextColor = SbzCyan,
+                            selectedIconColor = SbzCyan,
+                            selectedTextColor = SbzCyan,
                             indicatorColor = SbzSurfaceVariant,
                             unselectedIconColor = SbzTextSecondary,
                             unselectedTextColor = SbzTextSecondary
@@ -101,21 +179,56 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 }
             }
         },
+
         containerColor = SbzBackground
     ) { innerPadding ->
-        Box(Modifier.padding(innerPadding).fillMaxSize()) {
+
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+        ) {
             when (selectedTabIndex) {
-                0 -> DashboardScreen(viewModel, { selectedTabIndex = it }, { showPresetsDialog = true })
-                1 -> EqualizerScreen(viewModel)
-                2 -> ToneScreen(viewModel)
-                3 -> DynamicsScreen(viewModel)
-                4 -> SpatialScreen(viewModel)
-                5 -> OutputScreen(viewModel)
+
+                0 -> DashboardScreen(
+                    viewModel = viewModel,
+                    onNavigateToTab = { tab ->
+                        selectedTabIndex = tab
+                    },
+                    onOpenPresets = {
+                        showPresetsDialog = true
+                    }
+                )
+
+                1 -> EqualizerScreen(
+                    viewModel = viewModel
+                )
+
+                2 -> ToneScreen(
+                    viewModel = viewModel
+                )
+
+                3 -> DynamicsScreen(
+                    viewModel = viewModel
+                )
+
+                4 -> SpatialScreen(
+                    viewModel = viewModel
+                )
+
+                5 -> OutputScreen(
+                    viewModel = viewModel
+                )
             }
         }
     }
 
     if (showPresetsDialog) {
-        PresetsDialog(viewModel, { showPresetsDialog = false })
+        PresetsDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showPresetsDialog = false
+            }
+        )
     }
 }

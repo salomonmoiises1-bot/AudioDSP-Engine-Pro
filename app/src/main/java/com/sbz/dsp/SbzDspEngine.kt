@@ -21,6 +21,7 @@ class SbzDspEngine {
     private data class SessionPipeline(
         val dynamicsProcessing: DynamicsProcessingManager,
         val virtualizer: VirtualizerManager,
+        val hallReverb: HallReverbManager,
     )
 
     private val pipelines = ConcurrentHashMap<Int, SessionPipeline>()
@@ -34,6 +35,7 @@ class SbzDspEngine {
         val activeSessions: Set<Int> = emptySet(),
         val globalSessionAttached: Boolean = false,
         val dynamicsProcessingAvailable: Boolean = false,
+        val hallReverbAvailable: Boolean = false,
         val lastErrorMessage: String? = null
     )
 
@@ -71,7 +73,8 @@ class SbzDspEngine {
                 reclaimAllControl()
             }
             val virtManager = VirtualizerManager(sessionId)
-            val pipeline = SessionPipeline(dpManager, virtManager)
+            val hallManager = HallReverbManager(sessionId)
+            val pipeline = SessionPipeline(dpManager, virtManager, hallManager)
             pipelines[sessionId] = pipeline
 
             // Apply current config to this newly attached session
@@ -102,6 +105,7 @@ class SbzDspEngine {
             try {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
+                pipeline.hallReverb.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
             }
@@ -137,6 +141,9 @@ class SbzDspEngine {
                 config.isEnabled && config.virtualizerEnabled,
                 config.virtualizerStrength
             )
+
+            // Native environmental hall/reverb.
+            pipeline.hallReverb.apply(config)
         } catch (e: Exception) {
             Log.e(TAG, "Error applying config to pipeline: ${e.message}", e)
         }
@@ -150,6 +157,7 @@ class SbzDspEngine {
         for ((sessionId, pipeline) in pipelines) {
             Log.d(TAG, "Reclaiming control on session $sessionId...")
             pipeline.dynamicsProcessing.reclaimControl()
+            pipeline.hallReverb.reclaimControl()
         }
     }
 
@@ -163,6 +171,7 @@ class SbzDspEngine {
             try {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
+                pipeline.hallReverb.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping session $sessionId: ${e.message}")
             }
@@ -173,10 +182,12 @@ class SbzDspEngine {
 
     private fun updateState() {
         val dpAvail = pipelines.values.any { it.dynamicsProcessing.isAvailable() }
+        val hallAvail = pipelines.values.any { it.hallReverb.isAvailable() }
         _engineState.value = _engineState.value.copy(
             activeSessions = pipelines.keys.toSet(),
             globalSessionAttached = pipelines.containsKey(GLOBAL_SESSION_ID),
-            dynamicsProcessingAvailable = dpAvail
+            dynamicsProcessingAvailable = dpAvail,
+            hallReverbAvailable = hallAvail
         )
     }
 }

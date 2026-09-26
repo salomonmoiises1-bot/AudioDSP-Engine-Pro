@@ -29,6 +29,19 @@ data class DspConfig(
     val mdrcEnabled: Boolean = true,
     val mdrcBands: List<MdrcBandConfig> = defaultMdrcBands(),
 
+    // Hall / Environmental Reverb (Android EnvironmentalReverb)
+    val hallEnabled: Boolean = false,
+    val hallMixPercent: Float = 22.0f,
+    val hallDecayTimeMs: Float = 1800.0f,
+    val hallDecayHfRatio: Float = 0.70f,
+    val hallDensityPercent: Float = 70.0f,
+    val hallDiffusionPercent: Float = 85.0f,
+    val hallReflectionsDelayMs: Float = 25.0f,
+    val hallReflectionsLevelDb: Float = -12.0f,
+    val hallReverbDelayMs: Float = 20.0f,
+    val hallRoomHfLevelDb: Float = -4.0f,
+    val hallRoomLevelDb: Float = -3.0f,
+
     // AutoGain / AGC Control
     val autoGainEnabled: Boolean = true,
     val autoGainTargetDb: Float = -14.0f, // Loudness target LUFS / RMS approx

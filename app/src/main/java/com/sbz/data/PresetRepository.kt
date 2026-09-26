@@ -9,40 +9,50 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Storage and management of built-in factory and user-defined DSP Presets.
+ * Persistent storage for sBz factory presets, custom presets
+ * and the currently active DSP configuration.
  *
- * Persists:
- * - Complete DSP configuration
- * - 32-band EQ gains
- * - MDRC configuration, including editable crossover/cutoff frequencies
- * - Limiter
- * - AutoGain
- * - Bass Boost
- * - Tone controls
- * - Virtualizer
- * - Master Gain
- * - Balance
+ * MDRC cutoff frequencies are persisted individually for all
+ * four bands.
  */
 class PresetRepository(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "sbz_presets_store"
+
         private const val KEY_CUSTOM_PRESETS = "custom_presets"
         private const val KEY_ACTIVE_CONFIG = "active_dsp_config"
         private const val KEY_SELECTED_PRESET_ID = "selected_preset_id"
+
+        private const val DEFAULT_PRESET_ID = "system_flat"
+
+        private const val MDRC_BAND_COUNT = 4
+        private const val MIN_MDRC_CUTOFF_HZ = 20f
+        private const val MAX_MDRC_CUTOFF_HZ = 22000f
     }
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        context.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
 
+    /**
+     * Returns factory presets followed by user presets.
+     */
     fun getAllPresets(): List<Preset> {
         val systemPresets = Preset.createDefaultPresets()
         val customPresets = loadCustomPresets()
+
         return systemPresets + customPresets
     }
 
-    fun getSelectedPresetId(): String =
-        prefs.getString(KEY_SELECTED_PRESET_ID, "system_flat") ?: "system_flat"
+    fun getSelectedPresetId(): String {
+        return prefs.getString(
+            KEY_SELECTED_PRESET_ID,
+            DEFAULT_PRESET_ID
+        ) ?: DEFAULT_PRESET_ID
+    }
 
     fun setSelectedPresetId(id: String) {
         prefs.edit()
@@ -50,15 +60,30 @@ class PresetRepository(context: Context) {
             .apply()
     }
 
-    fun saveCustomPreset(name: String, config: DspConfig): Preset {
+    /**
+     * Creates and stores a custom preset.
+     *
+     * The complete DSP configuration is stored, including all
+     * MDRC cutoff frequencies.
+     */
+    fun saveCustomPreset(
+        name: String,
+        config: DspConfig
+    ): Preset {
+        val cleanName = name.trim().ifEmpty {
+            "Preset personalizado"
+        }
+
         val newPreset = Preset(
-            name = name,
+            name = cleanName,
             isSystem = false,
-            config = config
+            config = sanitizeConfig(config)
         )
 
         val list = loadCustomPresets().toMutableList()
+
         list.add(newPreset)
+
         saveCustomPresets(list)
 
         return newPreset
@@ -71,67 +96,48 @@ class PresetRepository(context: Context) {
         saveCustomPresets(list)
     }
 
-    fun duplicateCustomPreset(
-        id: String,
-        newName: String
-    ): Preset? {
-        val source = loadCustomPresets()
-            .firstOrNull { it.id == id }
-            ?: return null
-
-        return saveCustomPreset(
-            name = newName,
-            config = source.config
-        )
-    }
-
-    fun renameCustomPreset(
-        id: String,
-        newName: String
-    ): Boolean {
-        val trimmedName = newName.trim()
-
-        if (trimmedName.isEmpty()) {
-            return false
-        }
-
-        val list = loadCustomPresets().toMutableList()
-        val index = list.indexOfFirst { it.id == id }
-
-        if (index < 0) {
-            return false
-        }
-
-        list[index] = list[index].copy(
-            name = trimmedName
-        )
-
-        saveCustomPresets(list)
-        return true
-    }
-
+    /**
+     * Stores the active DSP configuration.
+     */
     fun saveActiveConfig(config: DspConfig) {
-        val json = configToJson(config)
+        val safeConfig = sanitizeConfig(config)
 
         prefs.edit()
-            .putString(KEY_ACTIVE_CONFIG, json.toString())
+            .putString(
+                KEY_ACTIVE_CONFIG,
+                configToJson(safeConfig).toString()
+            )
             .apply()
     }
 
+    /**
+     * Restores the active DSP configuration.
+     *
+     * If the stored JSON is invalid, a safe default configuration
+     * is returned.
+     */
     fun loadActiveConfig(): DspConfig {
-        val raw = prefs.getString(KEY_ACTIVE_CONFIG, null)
-            ?: return DspConfig()
+        val raw = prefs.getString(
+            KEY_ACTIVE_CONFIG,
+            null
+        ) ?: return DspConfig()
 
         return try {
-            jsonToConfig(JSONObject(raw))
+            sanitizeConfig(
+                jsonToConfig(
+                    JSONObject(raw)
+                )
+            )
         } catch (_: Exception) {
             DspConfig()
         }
     }
 
     private fun loadCustomPresets(): List<Preset> {
-        val raw = prefs.getString(KEY_CUSTOM_PRESETS, null)
-            ?: return emptyList()
+        val raw = prefs.getString(
+            KEY_CUSTOM_PRESETS,
+            null
+        ) ?: return emptyList()
 
         val result = mutableListOf<Preset>()
 
@@ -142,21 +148,35 @@ class PresetRepository(context: Context) {
                 val obj = array.optJSONObject(i)
                     ?: continue
 
-                val id = obj.optString("id", "")
-                val name = obj.optString("name", "")
+                val id = obj.optString(
+                    "id",
+                    ""
+                ).trim()
 
-                if (id.isBlank() || name.isBlank()) {
+                val name = obj.optString(
+                    "name",
+                    "Preset personalizado"
+                ).trim()
+
+                if (id.isEmpty()) {
                     continue
                 }
 
-                val configObject = obj.optJSONObject("config")
-                    ?: continue
+                val configObject =
+                    obj.optJSONObject("config")
+                        ?: JSONObject()
 
-                val config = jsonToConfig(configObject)
+                val config = sanitizeConfig(
+                    jsonToConfig(configObject)
+                )
 
                 result += Preset(
                     id = id,
-                    name = name,
+                    name = if (name.isEmpty()) {
+                        "Preset personalizado"
+                    } else {
+                        name
+                    },
                     category = obj.optString(
                         "category",
                         "Personalizados"
@@ -165,126 +185,241 @@ class PresetRepository(context: Context) {
                     config = config
                 )
             }
+
         } catch (_: Exception) {
-            // A corrupted custom-preset store must not break the DSP.
-            return emptyList()
+            /*
+             * A corrupted custom-preset store must not prevent
+             * the DSP engine from starting.
+             */
         }
 
         return result
     }
 
     /**
-     * Reads MDRC bands individually.
+     * Reads all four MDRC bands.
      *
-     * Unlike the previous implementation, one invalid/missing band does not
-     * cause the entire MDRC configuration to be replaced by factory defaults.
+     * Existing valid values are preserved.
+     * Missing or invalid bands are filled from the corresponding
+     * factory default only.
      *
-     * Existing valid custom values are preserved and only missing/invalid
-     * entries are filled from the corresponding factory band.
+     * This prevents a partially corrupted JSON object from causing
+     * all user MDRC crossover values to be replaced by defaults.
      */
     private fun jsonToMdrcBands(
         obj: JSONObject
     ): List<MdrcBandConfig> {
 
         val defaults = DspConfig.defaultMdrcBands()
-        val array = obj.optJSONArray("mdrcBands")
+
+        val array = obj.optJSONArray(
+            "mdrcBands"
+        )
 
         if (array == null) {
             return defaults
         }
 
-        val result = ArrayList<MdrcBandConfig>(defaults.size)
+        val result = mutableListOf<MdrcBandConfig>()
 
-        for (i in defaults.indices) {
-            val defaultBand = defaults[i]
-            val jsonBand = array.optJSONObject(i)
+        for (i in 0 until MDRC_BAND_COUNT) {
+            val defaultBand =
+                defaults.getOrElse(i) {
+                    defaults.last()
+                }
+
+            val jsonBand =
+                array.optJSONObject(i)
 
             if (jsonBand == null) {
                 result += defaultBand
                 continue
             }
 
+            val name = jsonBand.optString(
+                "name",
+                defaultBand.name
+            )
+
+            val cutoff = readFiniteFloat(
+                jsonBand,
+                "cutoffFrequencyHz",
+                defaultBand.cutoffFrequencyHz
+            ).coerceIn(
+                MIN_MDRC_CUTOFF_HZ,
+                MAX_MDRC_CUTOFF_HZ
+            )
+
+            val threshold = readFiniteFloat(
+                jsonBand,
+                "thresholdDb",
+                defaultBand.thresholdDb
+            ).coerceIn(
+                -60f,
+                0f
+            )
+
+            val ratio = readFiniteFloat(
+                jsonBand,
+                "ratio",
+                defaultBand.ratio
+            ).coerceIn(
+                1f,
+                20f
+            )
+
+            val attack = readFiniteFloat(
+                jsonBand,
+                "attackMs",
+                defaultBand.attackMs
+            ).coerceIn(
+                0.1f,
+                1000f
+            )
+
+            val release = readFiniteFloat(
+                jsonBand,
+                "releaseMs",
+                defaultBand.releaseMs
+            ).coerceIn(
+                1f,
+                2000f
+            )
+
+            val makeup = readFiniteFloat(
+                jsonBand,
+                "makeupGainDb",
+                defaultBand.makeupGainDb
+            ).coerceIn(
+                0f,
+                24f
+            )
+
+            val knee = readFiniteFloat(
+                jsonBand,
+                "kneeDb",
+                defaultBand.kneeDb
+            ).coerceIn(
+                0f,
+                30f
+            )
+
             result += MdrcBandConfig(
-                name = jsonBand.optString(
-                    "name",
+                name = name.ifBlank {
                     defaultBand.name
-                ),
-
-                cutoffFrequencyHz = readFiniteFloat(
-                    jsonBand,
-                    "cutoffFrequencyHz",
-                    defaultBand.cutoffFrequencyHz
-                ).coerceIn(20.0f, 22000.0f),
-
-                thresholdDb = readFiniteFloat(
-                    jsonBand,
-                    "thresholdDb",
-                    defaultBand.thresholdDb
-                ),
-
-                ratio = readFiniteFloat(
-                    jsonBand,
-                    "ratio",
-                    defaultBand.ratio
-                ).coerceAtLeast(1.0f),
-
-                attackMs = readFiniteFloat(
-                    jsonBand,
-                    "attackMs",
-                    defaultBand.attackMs
-                ).coerceAtLeast(0.0f),
-
-                releaseMs = readFiniteFloat(
-                    jsonBand,
-                    "releaseMs",
-                    defaultBand.releaseMs
-                ).coerceAtLeast(0.0f),
-
-                makeupGainDb = readFiniteFloat(
-                    jsonBand,
-                    "makeupGainDb",
-                    defaultBand.makeupGainDb
-                ),
-
-                kneeDb = readFiniteFloat(
-                    jsonBand,
-                    "kneeDb",
-                    defaultBand.kneeDb
-                ).coerceAtLeast(0.0f)
+                },
+                cutoffFrequencyHz = cutoff,
+                thresholdDb = threshold,
+                ratio = ratio,
+                attackMs = attack,
+                releaseMs = release,
+                makeupGainDb = makeup,
+                kneeDb = knee
             )
         }
 
         /*
-         * Keep the four-band MDRC structure expected by DspConfig.
-         *
-         * Do not reorder or replace user values here. The actual cutoff
-         * normalization/order handling is performed by the DSP manager
-         * immediately before applying the configuration to DynamicsProcessing.
+         * Preserve the stored values but ensure the crossover
+         * sequence is valid and increasing.
          */
+        return normalizeMdrcCutoffs(result)
+    }
+
+    private fun normalizeMdrcCutoffs(
+        bands: List<MdrcBandConfig>
+    ): List<MdrcBandConfig> {
+
+        if (bands.size != MDRC_BAND_COUNT) {
+            return DspConfig.defaultMdrcBands()
+        }
+
+        val result = mutableListOf<MdrcBandConfig>()
+
+        var previous = MIN_MDRC_CUTOFF_HZ - 1f
+
+        for (i in 0 until MDRC_BAND_COUNT) {
+            val band = bands[i]
+
+            val minimum =
+                if (i == 0) {
+                    MIN_MDRC_CUTOFF_HZ
+                } else {
+                    previous + 1f
+                }
+
+            val remaining =
+                MDRC_BAND_COUNT - i - 1
+
+            val maximum =
+                MAX_MDRC_CUTOFF_HZ -
+                    remaining
+
+            val cutoff =
+                band.cutoffFrequencyHz
+                    .coerceIn(
+                        minimum,
+                        maximum
+                    )
+
+            val normalized = band.copy(
+                cutoffFrequencyHz = cutoff
+            )
+
+            result += normalized
+            previous = cutoff
+        }
+
         return result
     }
 
-    /**
-     * Safely reads a floating-point value from JSON.
-     *
-     * Invalid, missing, NaN or infinite values fall back to the supplied
-     * default instead of corrupting the DSP configuration.
-     */
-    private fun readFiniteFloat(
-        obj: JSONObject,
-        key: String,
-        defaultValue: Float
-    ): Float {
-        val value = obj.optDouble(
-            key,
-            defaultValue.toDouble()
-        )
+    fun duplicateCustomPreset(
+        id: String,
+        newName: String
+    ): Preset? {
 
-        return if (value.isFinite()) {
-            value.toFloat()
-        } else {
-            defaultValue
+        val source =
+            loadCustomPresets()
+                .firstOrNull { it.id == id }
+                ?: return null
+
+        return saveCustomPreset(
+            newName,
+            source.config
+        )
+    }
+
+    fun renameCustomPreset(
+        id: String,
+        newName: String
+    ): Boolean {
+
+        val cleanName = newName.trim()
+
+        if (cleanName.isEmpty()) {
+            return false
         }
+
+        val list =
+            loadCustomPresets()
+                .toMutableList()
+
+        val index =
+            list.indexOfFirst {
+                it.id == id
+            }
+
+        if (index < 0) {
+            return false
+        }
+
+        list[index] =
+            list[index].copy(
+                name = cleanName
+            )
+
+        saveCustomPresets(list)
+
+        return true
     }
 
     private fun saveCustomPresets(
@@ -293,12 +428,31 @@ class PresetRepository(context: Context) {
         val array = JSONArray()
 
         for (preset in list) {
-            val obj = JSONObject().apply {
-                put("id", preset.id)
-                put("name", preset.name)
-                put("category", preset.category)
-                put("config", configToJson(preset.config))
-            }
+            val obj = JSONObject()
+
+            obj.put(
+                "id",
+                preset.id
+            )
+
+            obj.put(
+                "name",
+                preset.name
+            )
+
+            obj.put(
+                "category",
+                preset.category
+            )
+
+            obj.put(
+                "config",
+                configToJson(
+                    sanitizeConfig(
+                        preset.config
+                    )
+                )
+            )
 
             array.put(obj)
         }
@@ -311,53 +465,60 @@ class PresetRepository(context: Context) {
             .apply()
     }
 
+    /**
+     * Serializes the complete DSP configuration.
+     *
+     * MDRC cutoffFrequencyHz is explicitly persisted here.
+     */
     private fun configToJson(
         c: DspConfig
     ): JSONObject {
+
+        val safe = sanitizeConfig(c)
+
         return JSONObject().apply {
 
             put(
                 "isEnabled",
-                c.isEnabled
+                safe.isEnabled
             )
 
             put(
                 "preGainDb",
-                c.preGainDb.toDouble()
+                safe.preGainDb.toDouble()
             )
 
             put(
                 "bassBoostEnabled",
-                c.bassBoostEnabled
+                safe.bassBoostEnabled
             )
 
             put(
                 "bassBoostStrength",
-                c.bassBoostStrength.toInt()
+                safe.bassBoostStrength.toInt()
             )
 
             put(
                 "toneBassDb",
-                c.toneBassDb.toDouble()
+                safe.toneBassDb.toDouble()
             )
 
             put(
                 "toneMidDb",
-                c.toneMidDb.toDouble()
+                safe.toneMidDb.toDouble()
             )
 
             put(
                 "toneTrebleDb",
-                c.toneTrebleDb.toDouble()
+                safe.toneTrebleDb.toDouble()
             )
 
-            /*
-             * Full 32-band EQ configuration is always persisted.
-             */
             val eqArray = JSONArray()
 
-            c.eqGains.forEach { gain ->
-                eqArray.put(gain.toDouble())
+            safe.eqGains.forEach {
+                eqArray.put(
+                    it.toDouble()
+                )
             }
 
             put(
@@ -365,20 +526,14 @@ class PresetRepository(context: Context) {
                 eqArray
             )
 
-            /*
-             * MDRC
-             *
-             * The editable crossover/cutoff frequency is persisted as
-             * cutoffFrequencyHz together with all other band parameters.
-             */
             put(
                 "mdrcEnabled",
-                c.mdrcEnabled
+                safe.mdrcEnabled
             )
 
             val mdrcArray = JSONArray()
 
-            c.mdrcBands.forEach { band ->
+            safe.mdrcBands.forEach { band ->
 
                 mdrcArray.put(
                     JSONObject().apply {
@@ -388,6 +543,9 @@ class PresetRepository(context: Context) {
                             band.name
                         )
 
+                        /*
+                         * The crossover value is stored explicitly.
+                         */
                         put(
                             "cutoffFrequencyHz",
                             band.cutoffFrequencyHz.toDouble()
@@ -433,93 +591,104 @@ class PresetRepository(context: Context) {
 
             put(
                 "autoGainEnabled",
-                c.autoGainEnabled
+                safe.autoGainEnabled
             )
 
             put(
                 "autoGainTargetDb",
-                c.autoGainTargetDb.toDouble()
+                safe.autoGainTargetDb.toDouble()
             )
 
             put(
                 "virtualizerEnabled",
-                c.virtualizerEnabled
+                safe.virtualizerEnabled
             )
 
             put(
                 "virtualizerStrength",
-                c.virtualizerStrength.toInt()
+                safe.virtualizerStrength.toInt()
             )
 
             put(
                 "masterGainDb",
-                c.masterGainDb.toDouble()
+                safe.masterGainDb.toDouble()
             )
 
             put(
                 "balance",
-                c.balance.toDouble()
+                safe.balance.toDouble()
             )
 
             put(
                 "limiterEnabled",
-                c.limiterEnabled
+                safe.limiterEnabled
             )
 
             put(
                 "limiterThresholdDb",
-                c.limiterThresholdDb.toDouble()
+                safe.limiterThresholdDb.toDouble()
             )
 
             put(
                 "limiterAttackMs",
-                c.limiterAttackMs.toDouble()
+                safe.limiterAttackMs.toDouble()
             )
 
             put(
                 "limiterReleaseMs",
-                c.limiterReleaseMs.toDouble()
+                safe.limiterReleaseMs.toDouble()
             )
 
             put(
                 "limiterRatio",
-                c.limiterRatio.toDouble()
+                safe.limiterRatio.toDouble()
             )
 
             put(
                 "limiterPostGainDb",
-                c.limiterPostGainDb.toDouble()
+                safe.limiterPostGainDb.toDouble()
             )
         }
     }
 
+    /**
+     * Deserializes the complete DSP configuration.
+     */
     private fun jsonToConfig(
         obj: JSONObject
     ): DspConfig {
 
-        /*
-         * EQ: always restore a complete 32-band array.
-         * Older/incomplete presets fall back to flat for missing bands.
-         */
-        val eqList = MutableList(32) { 0.0f }
+        val eqList = mutableListOf<Float>()
 
-        obj.optJSONArray("eqGains")?.let { array ->
-
-            val count = minOf(
-                array.length(),
-                eqList.size
+        val eqArray =
+            obj.optJSONArray(
+                "eqGains"
             )
 
-            for (i in 0 until count) {
-                val value = array.optDouble(
-                    i,
-                    0.0
-                )
+        if (eqArray != null) {
+            for (i in 0 until eqArray.length()) {
+                val value =
+                    eqArray.optDouble(
+                        i,
+                        0.0
+                    ).toFloat()
 
-                if (value.isFinite()) {
-                    eqList[i] = value.toFloat()
-                }
+                eqList += value
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(-15f, 15f)
+                    ?: 0f
             }
+        }
+
+        val finalEqList =
+            MutableList(32) { 0f }
+
+        for (i in 0 until minOf(
+            eqList.size,
+            32
+        )) {
+            finalEqList[i] =
+                eqList[i]
         }
 
         return DspConfig(
@@ -529,116 +698,417 @@ class PresetRepository(context: Context) {
                 true
             ),
 
-            preGainDb = readFiniteFloat(
-                obj,
-                "preGainDb",
-                0.0f
-            ),
+            preGainDb =
+                readFiniteFloat(
+                    obj,
+                    "preGainDb",
+                    0f
+                ).coerceIn(
+                    -12f,
+                    12f
+                ),
 
-            bassBoostEnabled = obj.optBoolean(
-                "bassBoostEnabled",
-                false
-            ),
+            bassBoostEnabled =
+                obj.optBoolean(
+                    "bassBoostEnabled",
+                    false
+                ),
 
-            bassBoostStrength = obj.optInt(
-                "bassBoostStrength",
-                0
-            ).toShort(),
+            bassBoostStrength =
+                obj.optInt(
+                    "bassBoostStrength",
+                    0
+                ).coerceIn(
+                    0,
+                    1000
+                ).toShort(),
 
-            toneBassDb = readFiniteFloat(
-                obj,
-                "toneBassDb",
-                0.0f
-            ),
+            toneBassDb =
+                readFiniteFloat(
+                    obj,
+                    "toneBassDb",
+                    0f
+                ).coerceIn(
+                    -12f,
+                    12f
+                ),
 
-            toneMidDb = readFiniteFloat(
-                obj,
-                "toneMidDb",
-                0.0f
-            ),
+            toneMidDb =
+                readFiniteFloat(
+                    obj,
+                    "toneMidDb",
+                    0f
+                ).coerceIn(
+                    -12f,
+                    12f
+                ),
 
-            toneTrebleDb = readFiniteFloat(
-                obj,
-                "toneTrebleDb",
-                0.0f
-            ),
+            toneTrebleDb =
+                readFiniteFloat(
+                    obj,
+                    "toneTrebleDb",
+                    0f
+                ).coerceIn(
+                    -12f,
+                    12f
+                ),
 
-            eqGains = eqList,
+            eqGains = finalEqList,
 
-            mdrcEnabled = obj.optBoolean(
-                "mdrcEnabled",
-                true
-            ),
+            mdrcEnabled =
+                obj.optBoolean(
+                    "mdrcEnabled",
+                    true
+                ),
 
-            mdrcBands = jsonToMdrcBands(obj),
+            mdrcBands =
+                jsonToMdrcBands(obj),
 
-            autoGainEnabled = obj.optBoolean(
-                "autoGainEnabled",
-                true
-            ),
+            autoGainEnabled =
+                obj.optBoolean(
+                    "autoGainEnabled",
+                    true
+                ),
 
-            autoGainTargetDb = readFiniteFloat(
-                obj,
-                "autoGainTargetDb",
-                -14.0f
-            ),
+            autoGainTargetDb =
+                readFiniteFloat(
+                    obj,
+                    "autoGainTargetDb",
+                    -14f
+                ).coerceIn(
+                    -24f,
+                    -6f
+                ),
 
-            virtualizerEnabled = obj.optBoolean(
-                "virtualizerEnabled",
-                false
-            ),
+            virtualizerEnabled =
+                obj.optBoolean(
+                    "virtualizerEnabled",
+                    false
+                ),
 
-            virtualizerStrength = obj.optInt(
-                "virtualizerStrength",
-                0
-            ).toShort(),
+            virtualizerStrength =
+                obj.optInt(
+                    "virtualizerStrength",
+                    0
+                ).coerceIn(
+                    0,
+                    1000
+                ).toShort(),
 
-            masterGainDb = readFiniteFloat(
-                obj,
-                "masterGainDb",
-                0.0f
-            ),
+            masterGainDb =
+                readFiniteFloat(
+                    obj,
+                    "masterGainDb",
+                    0f
+                ).coerceIn(
+                    -24f,
+                    12f
+                ),
 
-            balance = readFiniteFloat(
-                obj,
-                "balance",
-                0.0f
-            ),
+            balance =
+                readFiniteFloat(
+                    obj,
+                    "balance",
+                    0f
+                ).coerceIn(
+                    -1f,
+                    1f
+                ),
 
-            limiterEnabled = obj.optBoolean(
-                "limiterEnabled",
-                true
-            ),
+            limiterEnabled =
+                obj.optBoolean(
+                    "limiterEnabled",
+                    true
+                ),
 
-            limiterThresholdDb = readFiniteFloat(
-                obj,
-                "limiterThresholdDb",
-                -0.5f
-            ),
+            limiterThresholdDb =
+                readFiniteFloat(
+                    obj,
+                    "limiterThresholdDb",
+                    -0.5f
+                ).coerceIn(
+                    -60f,
+                    0f
+                ),
 
-            limiterAttackMs = readFiniteFloat(
-                obj,
-                "limiterAttackMs",
-                1.0f
-            ),
+            limiterAttackMs =
+                readFiniteFloat(
+                    obj,
+                    "limiterAttackMs",
+                    1f
+                ).coerceIn(
+                    0.1f,
+                    1000f
+                ),
 
-            limiterReleaseMs = readFiniteFloat(
-                obj,
-                "limiterReleaseMs",
-                50.0f
-            ),
+            limiterReleaseMs =
+                readFiniteFloat(
+                    obj,
+                    "limiterReleaseMs",
+                    50f
+                ).coerceIn(
+                    1f,
+                    2000f
+                ),
 
-            limiterRatio = readFiniteFloat(
-                obj,
-                "limiterRatio",
-                20.0f
-            ),
+            limiterRatio =
+                readFiniteFloat(
+                    obj,
+                    "limiterRatio",
+                    20f
+                ).coerceIn(
+                    1f,
+                    100f
+                ),
 
-            limiterPostGainDb = readFiniteFloat(
-                obj,
-                "limiterPostGainDb",
-                0.0f
-            )
+            limiterPostGainDb =
+                readFiniteFloat(
+                    obj,
+                    "limiterPostGainDb",
+                    0f
+                ).coerceIn(
+                    -24f,
+                    12f
+                )
         )
+    }
+
+    /**
+     * Protects configurations before they enter persistence.
+     */
+    private fun sanitizeConfig(
+        config: DspConfig
+    ): DspConfig {
+
+        val safeBands =
+            normalizeMdrcCutoffs(
+                config.mdrcBands
+                    .map { band ->
+                        band.copy(
+                            cutoffFrequencyHz =
+                                band.cutoffFrequencyHz
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        MIN_MDRC_CUTOFF_HZ,
+                                        MAX_MDRC_CUTOFF_HZ
+                                    )
+                                    ?: 160f,
+
+                            thresholdDb =
+                                band.thresholdDb
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        -60f,
+                                        0f
+                                    )
+                                    ?: -18f,
+
+                            ratio =
+                                band.ratio
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        1f,
+                                        20f
+                                    )
+                                    ?: 2f,
+
+                            attackMs =
+                                band.attackMs
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        0.1f,
+                                        1000f
+                                    )
+                                    ?: 10f,
+
+                            releaseMs =
+                                band.releaseMs
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        1f,
+                                        2000f
+                                    )
+                                    ?: 80f,
+
+                            makeupGainDb =
+                                band.makeupGainDb
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        0f,
+                                        24f
+                                    )
+                                    ?: 0f,
+
+                            kneeDb =
+                                band.kneeDb
+                                    .takeIf {
+                                        it.isFinite()
+                                    }
+                                    ?.coerceIn(
+                                        0f,
+                                        30f
+                                    )
+                                    ?: 2f
+                        )
+                    }
+            )
+
+        val safeEq =
+            MutableList(32) { index ->
+                config.eqGains
+                    .getOrElse(index) { 0f }
+                    .takeIf {
+                        it.isFinite()
+                    }
+                    ?.coerceIn(
+                        -15f,
+                        15f
+                    )
+                    ?: 0f
+            }
+
+        return config.copy(
+            preGainDb =
+                config.preGainDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -12f,
+                        12f
+                    )
+                    ?: 0f,
+
+            toneBassDb =
+                config.toneBassDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -12f,
+                        12f
+                    )
+                    ?: 0f,
+
+            toneMidDb =
+                config.toneMidDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -12f,
+                        12f
+                    )
+                    ?: 0f,
+
+            toneTrebleDb =
+                config.toneTrebleDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -12f,
+                        12f
+                    )
+                    ?: 0f,
+
+            eqGains = safeEq,
+
+            mdrcBands = safeBands,
+
+            autoGainTargetDb =
+                config.autoGainTargetDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -24f,
+                        -6f
+                    )
+                    ?: -14f,
+
+            masterGainDb =
+                config.masterGainDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -24f,
+                        12f
+                    )
+                    ?: 0f,
+
+            balance =
+                config.balance
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -1f,
+                        1f
+                    )
+                    ?: 0f,
+
+            limiterThresholdDb =
+                config.limiterThresholdDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -60f,
+                        0f
+                    )
+                    ?: -0.5f,
+
+            limiterAttackMs =
+                config.limiterAttackMs
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        0.1f,
+                        1000f
+                    )
+                    ?: 1f,
+
+            limiterReleaseMs =
+                config.limiterReleaseMs
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        1f,
+                        2000f
+                    )
+                    ?: 50f,
+
+            limiterRatio =
+                config.limiterRatio
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        1f,
+                        100f
+                    )
+                    ?: 20f,
+
+            limiterPostGainDb =
+                config.limiterPostGainDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(
+                        -24f,
+                        12f
+                    )
+                    ?: 0f
+        )
+    }
+
+    private fun readFiniteFloat(
+        obj: JSONObject,
+        key: String,
+        default: Float
+    ): Float {
+        val value =
+            obj.optDouble(
+                key,
+                default.toDouble()
+            ).toFloat()
+
+        return if (value.isFinite()) {
+            value
+        } else {
+            default
+        }
     }
 }

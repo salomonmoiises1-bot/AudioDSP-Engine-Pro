@@ -76,12 +76,46 @@ class PresetRepository(context: Context) {
                 val id = obj.getString("id")
                 val name = obj.getString("name")
                 val config = jsonToConfig(obj.getJSONObject("config"))
-                result.add(Preset(id = id, name = name, isSystem = false, config = config))
+                result.add(Preset(id = id, name = name, category = obj.optString("category", "Personalizados"), isSystem = false, config = config))
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return result
+    }
+
+    private fun jsonToMdrcBands(obj: JSONObject): List<com.sbz.dsp.model.MdrcBandConfig> {
+        val arr = obj.optJSONArray("mdrcBands") ?: return DspConfig.defaultMdrcBands()
+        val result = mutableListOf<com.sbz.dsp.model.MdrcBandConfig>()
+        for (i in 0 until arr.length()) {
+            val b = arr.optJSONObject(i) ?: continue
+            val defaults = DspConfig.defaultMdrcBands().getOrElse(i) { DspConfig.defaultMdrcBands().last() }
+            result += com.sbz.dsp.model.MdrcBandConfig(
+                name = b.optString("name", defaults.name),
+                cutoffFrequencyHz = b.optDouble("cutoffFrequencyHz", defaults.cutoffFrequencyHz.toDouble()).toFloat(),
+                thresholdDb = b.optDouble("thresholdDb", defaults.thresholdDb.toDouble()).toFloat(),
+                ratio = b.optDouble("ratio", defaults.ratio.toDouble()).toFloat(),
+                attackMs = b.optDouble("attackMs", defaults.attackMs.toDouble()).toFloat(),
+                releaseMs = b.optDouble("releaseMs", defaults.releaseMs.toDouble()).toFloat(),
+                makeupGainDb = b.optDouble("makeupGainDb", defaults.makeupGainDb.toDouble()).toFloat(),
+                kneeDb = b.optDouble("kneeDb", defaults.kneeDb.toDouble()).toFloat(),
+            )
+        }
+        return if (result.size == 4) result else DspConfig.defaultMdrcBands()
+    }
+
+    fun duplicateCustomPreset(id: String, newName: String): Preset? {
+        val source = loadCustomPresets().firstOrNull { it.id == id } ?: return null
+        return saveCustomPreset(newName, source.config)
+    }
+
+    fun renameCustomPreset(id: String, newName: String): Boolean {
+        val list = loadCustomPresets().toMutableList()
+        val index = list.indexOfFirst { it.id == id }
+        if (index < 0) return false
+        list[index] = list[index].copy(name = newName.trim())
+        saveCustomPresets(list)
+        return true
     }
 
     private fun saveCustomPresets(list: List<Preset>) {
@@ -90,6 +124,7 @@ class PresetRepository(context: Context) {
             val obj = JSONObject().apply {
                 put("id", preset.id)
                 put("name", preset.name)
+                put("category", preset.category)
                 put("config", configToJson(preset.config))
             }
             array.put(obj)
@@ -112,6 +147,20 @@ class PresetRepository(context: Context) {
             put("eqGains", eqArray)
 
             put("mdrcEnabled", c.mdrcEnabled)
+            val mdrcArray = JSONArray()
+            c.mdrcBands.forEach { band ->
+                mdrcArray.put(JSONObject().apply {
+                    put("name", band.name)
+                    put("cutoffFrequencyHz", band.cutoffFrequencyHz.toDouble())
+                    put("thresholdDb", band.thresholdDb.toDouble())
+                    put("ratio", band.ratio.toDouble())
+                    put("attackMs", band.attackMs.toDouble())
+                    put("releaseMs", band.releaseMs.toDouble())
+                    put("makeupGainDb", band.makeupGainDb.toDouble())
+                    put("kneeDb", band.kneeDb.toDouble())
+                })
+            }
+            put("mdrcBands", mdrcArray)
             put("autoGainEnabled", c.autoGainEnabled)
             put("autoGainTargetDb", c.autoGainTargetDb.toDouble())
 
@@ -150,6 +199,7 @@ class PresetRepository(context: Context) {
             toneTrebleDb = obj.optDouble("toneTrebleDb", 0.0).toFloat(),
             eqGains = finalEqList,
             mdrcEnabled = obj.optBoolean("mdrcEnabled", true),
+            mdrcBands = jsonToMdrcBands(obj),
             autoGainEnabled = obj.optBoolean("autoGainEnabled", true),
             autoGainTargetDb = obj.optDouble("autoGainTargetDb", -14.0).toFloat(),
             virtualizerEnabled = obj.optBoolean("virtualizerEnabled", false),

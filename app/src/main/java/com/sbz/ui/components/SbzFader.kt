@@ -2,7 +2,7 @@ package com.sbz.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -30,6 +30,21 @@ import kotlin.math.roundToInt
  * Step: 0.5 dB
  * Double-tap: Reset to 0.0 dB
  */
+private fun gainFromY(
+    y: Float,
+    height: Float,
+    minGainDb: Float,
+    maxGainDb: Float,
+    stepDb: Float
+): Float {
+    val thumbMargin = 24f
+    val effectiveHeight = (height - thumbMargin * 2f).coerceAtLeast(1f)
+    val normalizedY = ((y - thumbMargin) / effectiveHeight).coerceIn(0f, 1f)
+    val rawGain = maxGainDb - normalizedY * (maxGainDb - minGainDb)
+    return ((rawGain / stepDb).roundToInt() * stepDb)
+        .coerceIn(minGainDb, maxGainDb)
+}
+
 @Composable
 fun SbzFader(
     gainDb: Float,
@@ -82,36 +97,28 @@ fun SbzFader(
             modifier = Modifier
                 .weight(1f)
                 .width(44.dp)
-                .pointerInput(Unit) {
-                    // Double tap to zero out fader
+                .pointerInput(minGainDb, maxGainDb, stepDb) {
+                    // Double tap resets exactly to 0 dB; single tap maps directly
+                    // to the physical touch position.
                     detectTapGestures(
-                        onDoubleTap = {
-                            onGainChanged(0.0f)
-                        },
+                        onDoubleTap = { onGainChanged(0.0f) },
                         onTap = { offset ->
-                            val height = size.height.toFloat()
-                            val thumbMargin = 24f
-                            val effectiveHeight = height - (thumbMargin * 2f)
-                            val normalizedY = ((offset.y - thumbMargin) / effectiveHeight).coerceIn(0f, 1f)
-                            // Inverted: top is maxGain, bottom is minGain
-                            val rawGain = maxGainDb - normalizedY * (maxGainDb - minGainDb)
-                            val stepped = (rawGain / stepDb).roundToInt() * stepDb
-                            onGainChanged(stepped.coerceIn(minGainDb, maxGainDb))
+                            onGainChanged(gainFromY(offset.y, size.height.toFloat(), minGainDb, maxGainDb, stepDb))
                         }
                     )
                 }
-                .pointerInput(Unit) {
-                    // Vertical drag with full pointer consumption to avoid parent scroll stealing
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { change, dragAmount ->
+                .pointerInput(minGainDb, maxGainDb, stepDb) {
+                    // Absolute-position dragging fixes the previous error where
+                    // each event was calculated from a stale gainDb captured by
+                    // pointerInput(Unit). Every event now maps finger position
+                    // directly to an exact 0.5 dB value.
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            onGainChanged(gainFromY(offset.y, size.height.toFloat(), minGainDb, maxGainDb, stepDb))
+                        },
+                        onDrag = { change, _ ->
                             change.consume()
-                            val height = size.height.toFloat()
-                            val thumbMargin = 24f
-                            val effectiveHeight = height - (thumbMargin * 2f)
-                            val deltaGain = -(dragAmount / effectiveHeight) * (maxGainDb - minGainDb)
-                            val newGain = (gainDb + deltaGain).coerceIn(minGainDb, maxGainDb)
-                            val stepped = (newGain / stepDb).roundToInt() * stepDb
-                            onGainChanged(stepped.coerceIn(minGainDb, maxGainDb))
+                            onGainChanged(gainFromY(change.position.y, size.height.toFloat(), minGainDb, maxGainDb, stepDb))
                         }
                     )
                 }

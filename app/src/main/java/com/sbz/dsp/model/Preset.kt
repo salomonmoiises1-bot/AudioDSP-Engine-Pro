@@ -33,7 +33,7 @@ data class Preset(
 
         private fun preset(id: String, name: String, category: String, config: DspConfig): Preset {
             val effectiveConfig = if (config.mdrcBands == DspConfig.defaultMdrcBands()) {
-                config.copy(mdrcBands = DspConfig.mdrcProfileForPresetForFactory(id))
+                config.copy(mdrcBands = config.mdrcProfileForPresetForFactory(id))
             } else {
                 config
             }

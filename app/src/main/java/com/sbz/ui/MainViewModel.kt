@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sbz.data.PresetRepository
@@ -183,7 +182,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePreset(id: String) {
         presetRepo.deleteCustomPreset(id)
+        if (_selectedPresetId.value == id) {
+            _selectedPresetId.value = "system_flat"
+            presetRepo.setSelectedPresetId("system_flat")
+        }
         _presets.value = presetRepo.getAllPresets()
+    }
+
+    fun duplicatePreset(id: String, name: String) {
+        presetRepo.duplicateCustomPreset(id, name.trim())
+        _presets.value = presetRepo.getAllPresets()
+    }
+
+    fun renamePreset(id: String, name: String) {
+        if (presetRepo.renameCustomPreset(id, name.trim())) {
+            _presets.value = presetRepo.getAllPresets()
+        }
     }
 
     fun reclaimDspControl() {
@@ -191,7 +205,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val intent = Intent(getApplication(), SbzAudioService::class.java).apply {
                 action = SbzAudioService.ACTION_RECLAIM_CONTROL
             }
-            ContextCompat.startForegroundService(getApplication(), intent)
+            getApplication<Application>().startService(intent)
         }
     }
 

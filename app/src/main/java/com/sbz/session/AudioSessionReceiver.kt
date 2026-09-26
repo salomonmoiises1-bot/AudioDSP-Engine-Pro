@@ -3,6 +3,7 @@ package com.sbz.session
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.media.audiofx.AudioEffect
 import android.util.Log
 import com.sbz.service.SbzAudioService
@@ -38,7 +39,11 @@ class AudioSessionReceiver : BroadcastReceiver() {
                     putExtra(SbzAudioService.EXTRA_SESSION_ID, sessionId)
                     putExtra(SbzAudioService.EXTRA_PACKAGE_NAME, packageName)
                 }
-                context.startService(serviceIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             }
             AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
                 Log.i(TAG, "Audio session closed: $sessionId ($packageName)")
@@ -46,7 +51,11 @@ class AudioSessionReceiver : BroadcastReceiver() {
                     this.action = SbzAudioService.ACTION_DETACH_SESSION
                     putExtra(SbzAudioService.EXTRA_SESSION_ID, sessionId)
                 }
-                context.startService(serviceIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             }
         }
     }

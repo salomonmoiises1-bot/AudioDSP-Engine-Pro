@@ -35,8 +35,12 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val engineStatus by viewModel.engineStatus.collectAsState()
 
     val screens = listOf(
-        Screen.Dashboard, Screen.Equalizer, Screen.Tone,
-        Screen.Dynamics, Screen.Spatial, Screen.Output
+        Screen.Dashboard,
+        Screen.Equalizer,
+        Screen.Tone,
+        Screen.Dynamics,
+        Screen.Spatial,
+        Screen.Output
     )
 
     Scaffold(
@@ -48,27 +52,49 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("sBz", 20.sp, FontFamily.Monospace, FontWeight.Black, color = SbzCyan)
-                        Text("AUDIO DSP", 12.sp, FontFamily.Monospace, FontWeight.Medium, color = SbzTextSecondary)
+                        Text(
+                            text = "sBz",
+                            fontSize = 20.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Black,
+                            color = SbzCyan
+                        )
+                        Text(
+                            text = "AUDIO DSP",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            color = SbzTextSecondary
+                        )
                         Box(
-                            Modifier.clip(CircleShape)
+                            Modifier
+                                .clip(CircleShape)
                                 .background(
-                                    if (config.isEnabled && engineStatus.isRunning) SbzGreen.copy(alpha = 0.2f)
-                                    else SbzRed.copy(alpha = 0.2f)
+                                    if (config.isEnabled && engineStatus.isRunning) {
+                                        SbzGreen.copy(alpha = 0.2f)
+                                    } else {
+                                        SbzRed.copy(alpha = 0.2f)
+                                    }
                                 )
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                if (config.isEnabled) "ACTIVO" else "DESACTIVADO",
-                                9.sp, FontFamily.Monospace, FontWeight.Bold,
+                                text = if (config.isEnabled) "ACTIVO" else "DESACTIVADO",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
                                 color = if (config.isEnabled && engineStatus.isRunning) SbzGreen else SbzRed
                             )
                         }
                     }
                 },
                 actions = {
-                    IconButton({ showPresetsDialog = true }) {
-                        Icon(Icons.Default.Bookmark, "Preajustes", tint = SbzCyan)
+                    IconButton(onClick = { showPresetsDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Bookmark,
+                            contentDescription = "Preajustes",
+                            tint = SbzCyan
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -78,21 +104,33 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = SbzSurface, tonalElevation = 0.dp) {
+            NavigationBar(
+                containerColor = SbzSurface,
+                tonalElevation = 0.dp
+            ) {
                 screens.forEachIndexed { index, screen ->
                     val isSelected = selectedTabIndex == index
                     NavigationBarItem(
                         selected = isSelected,
                         onClick = { selectedTabIndex = index },
-                        icon = { Icon(screen.icon, screen.title, Modifier.size(20.dp)) },
+                        icon = {
+                            Icon(
+                                imageVector = screen.icon,
+                                contentDescription = screen.title,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
                         label = {
                             Text(
-                                screen.title, fontSize = 9.sp, maxLines = 1,
+                                text = screen.title,
+                                fontSize = 9.sp,
+                                maxLines = 1,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = SbzCyan, selectedTextColor = SbzCyan,
+                            selectedIconColor = SbzCyan,
+                            selectedTextColor = SbzCyan,
                             indicatorColor = SbzSurfaceVariant,
                             unselectedIconColor = SbzTextSecondary,
                             unselectedTextColor = SbzTextSecondary
@@ -103,9 +141,17 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         },
         containerColor = SbzBackground
     ) { innerPadding ->
-        Box(Modifier.padding(innerPadding).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+        ) {
             when (selectedTabIndex) {
-                0 -> DashboardScreen(viewModel, { selectedTabIndex = it }, { showPresetsDialog = true })
+                0 -> DashboardScreen(
+                    viewModel,
+                    { selectedTabIndex = it },
+                    { showPresetsDialog = true }
+                )
                 1 -> EqualizerScreen(viewModel)
                 2 -> ToneScreen(viewModel)
                 3 -> DynamicsScreen(viewModel)
@@ -116,6 +162,6 @@ fun SbzApp(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     }
 
     if (showPresetsDialog) {
-        PresetsDialog(viewModel, { showPresetsDialog = false })
+        PresetsDialog(viewModel) { showPresetsDialog = false }
     }
 }

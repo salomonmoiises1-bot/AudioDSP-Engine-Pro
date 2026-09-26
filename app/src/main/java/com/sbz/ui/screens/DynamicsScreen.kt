@@ -6,8 +6,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -91,7 +94,12 @@ fun DynamicsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(14.dp))
 
                 config.mdrcBands.getOrNull(selectedBandIndex)?.let { activeBand ->
-                    BandParameters(activeBand, config.mdrcEnabled) {
+                    BandParameters(
+                        band = activeBand,
+                        bandIndex = selectedBandIndex,
+                        allBands = config.mdrcBands,
+                        enabled = config.mdrcEnabled
+                    ) {
                         viewModel.updateMdrcBand(selectedBandIndex, it)
                     }
                 }
@@ -178,24 +186,69 @@ fun DynamicsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 @Composable
 private fun BandParameters(
     band: MdrcBandConfig,
+    bandIndex: Int,
+    allBands: List<MdrcBandConfig>,
     enabled: Boolean,
     onBandChange: (MdrcBandConfig) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Frecuencia de corte del crossover",
-                fontSize = 12.sp,
-                color = SbzTextSecondary
-            )
-            Text(
-                text = "${band.cutoffFrequencyHz.toInt()} Hz",
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                color = SbzCyan
+        var cutoffText by remember(band.cutoffFrequencyHz) {
+            mutableStateOf(band.cutoffFrequencyHz.toInt().toString())
+        }
+        val minCutoff = if (bandIndex == 0) 20f
+        else allBands[bandIndex - 1].cutoffFrequencyHz + 20f
+        val maxCutoff = if (bandIndex == allBands.lastIndex) 22000f
+        else allBands[bandIndex + 1].cutoffFrequencyHz - 20f
+
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Frecuencia de corte del crossover",
+                    fontSize = 12.sp,
+                    color = SbzTextSecondary
+                )
+                Text(
+                    text = "${band.cutoffFrequencyHz.toInt()} Hz",
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = SbzCyan
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+                value = cutoffText,
+                onValueChange = { input ->
+                    cutoffText = input.filter { it.isDigit() }.take(5)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { state ->
+                        if (!state.isFocused) {
+                            cutoffText.toFloatOrNull()?.let { raw ->
+                                val value = raw.coerceIn(minCutoff, maxCutoff)
+                                cutoffText = value.toInt().toString()
+                                onBandChange(band.copy(cutoffFrequencyHz = value))
+                            } ?: run {
+                                cutoffText = band.cutoffFrequencyHz.toInt().toString()
+                            }
+                        }
+                    },
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = { Text("Hz") },
+                supportingText = {
+                    Text("${minCutoff.toInt()}–${maxCutoff.toInt()} Hz")
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = SbzCyan,
+                    unfocusedBorderColor = SbzBorder,
+                    focusedLabelColor = SbzCyan,
+                    cursorColor = SbzCyan
+                )
             )
         }
 

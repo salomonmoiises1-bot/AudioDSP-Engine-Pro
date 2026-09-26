@@ -21,29 +21,75 @@ fun DynamicsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val config by viewModel.config.collectAsState()
     var selectedBandIndex by remember { mutableStateOf(0) }
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.mdrcEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)) {
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (config.mdrcEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder
+            )
+        ) {
             Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column {
-                        Text("MDRC — COMPRESOR MULTIBANDA", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
-                        Text("MBC DynamicsProcessing nativo de 4 bandas", 11.sp, color = SbzTextSecondary)
+                        Text(
+                            text = "MDRC — COMPRESOR MULTIBANDA",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzCyan
+                        )
+                        Text(
+                            text = "MBC DynamicsProcessing nativo de 4 bandas",
+                            fontSize = 11.sp,
+                            color = SbzTextSecondary
+                        )
                     }
-                    Switch(config.mdrcEnabled, { viewModel.setMdrcEnabled(it) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = SbzCyan, checkedTrackColor = SbzCyanDim))
+                    Switch(
+                        checked = config.mdrcEnabled,
+                        onCheckedChange = { viewModel.setMdrcEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SbzCyan,
+                            checkedTrackColor = SbzCyanDim
+                        )
+                    )
                 }
+
                 Spacer(Modifier.height(14.dp))
-                TabRow(selectedBandIndex, containerColor = SbzSurface, contentColor = SbzCyan) {
+
+                TabRow(
+                    selectedTabIndex = selectedBandIndex,
+                    containerColor = SbzSurface,
+                    contentColor = SbzCyan
+                ) {
                     config.mdrcBands.forEachIndexed { index, band ->
-                        Tab(selectedBandIndex == index, { selectedBandIndex = index }) {
-                            Text(band.name, 11.sp, maxLines = 1)
+                        Tab(
+                            selected = selectedBandIndex == index,
+                            onClick = { selectedBandIndex = index }
+                        ) {
+                            Text(
+                                text = band.name,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
+
                 Spacer(Modifier.height(14.dp))
+
                 config.mdrcBands.getOrNull(selectedBandIndex)?.let { activeBand ->
                     BandParameters(activeBand, config.mdrcEnabled) {
                         viewModel.updateMdrcBand(selectedBandIndex, it)
@@ -52,83 +98,160 @@ fun DynamicsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.autoGainEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)) {
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (config.autoGainEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder
+            )
+        ) {
             Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column {
-                        Text("CONTROL DE GANANCIA AUTOMÁTICA / AGC", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzTextPrimary)
-                        Text("Evita variaciones bruscas de volumen y saturación", 11.sp, color = SbzTextSecondary)
+                        Text(
+                            text = "CONTROL DE GANANCIA AUTOMÁTICA / AGC",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzTextPrimary
+                        )
+                        Text(
+                            text = "Evita variaciones bruscas de volumen y saturación",
+                            fontSize = 11.sp,
+                            color = SbzTextSecondary
+                        )
                     }
-                    Switch(config.autoGainEnabled, { viewModel.setAutoGain(it, config.autoGainTargetDb) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = SbzCyan, checkedTrackColor = SbzCyanDim))
+                    Switch(
+                        checked = config.autoGainEnabled,
+                        onCheckedChange = {
+                            viewModel.setAutoGain(it, config.autoGainTargetDb)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SbzCyan,
+                            checkedTrackColor = SbzCyanDim
+                        )
+                    )
                 }
+
                 Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Text("Nivel de volumen objetivo", 12.sp, color = SbzTextSecondary)
-                    Text("%.1f dB".format(config.autoGainTargetDb), 12.sp, FontFamily.Monospace, color = SbzCyan)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Nivel de volumen objetivo",
+                        fontSize = 12.sp,
+                        color = SbzTextSecondary
+                    )
+                    Text(
+                        text = "%.1f dB".format(config.autoGainTargetDb),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = SbzCyan
+                    )
                 }
-                Slider(config.autoGainTargetDb, { viewModel.setAutoGain(config.autoGainEnabled, it) },
-                    valueRange = -24f..-6f, enabled = config.autoGainEnabled,
-                    colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
+
+                Slider(
+                    value = config.autoGainTargetDb,
+                    onValueChange = {
+                        viewModel.setAutoGain(config.autoGainEnabled, it)
+                    },
+                    valueRange = -24f..-6f,
+                    enabled = config.autoGainEnabled,
+                    colors = SliderDefaults.colors(
+                        thumbColor = SbzCyan,
+                        activeTrackColor = SbzCyan
+                    )
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BandParameters(band: MdrcBandConfig, enabled: Boolean, onBandChange: (MdrcBandConfig) -> Unit) {
+private fun BandParameters(
+    band: MdrcBandConfig,
+    enabled: Boolean,
+    onBandChange: (MdrcBandConfig) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-            Text("Frecuencia de corte del crossover", 12.sp, color = SbzTextSecondary)
-            Text("${formatFrequency(band.cutoffFrequencyHz)}", 12.sp, FontFamily.Monospace, color = SbzCyan)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Frecuencia de corte del crossover",
+                fontSize = 12.sp,
+                color = SbzTextSecondary
+            )
+            Text(
+                text = "${band.cutoffFrequencyHz.toInt()} Hz",
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                color = SbzCyan
+            )
         }
-        Slider(
-            value = frequencyToSlider(band.cutoffFrequencyHz),
-            onValueChange = { onBandChange(band.copy(cutoffFrequencyHz = sliderToFrequency(it))) },
-            valueRange = 0f..1f,
-            enabled = enabled,
-            colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan)
-        )
-        ParamSlider("Umbral", band.thresholdDb, -60f..0f, "%.1f dB", enabled) { onBandChange(band.copy(thresholdDb = it)) }
-        ParamSlider("Relación", band.ratio, 1f..20f, "%.1f:1", enabled) { onBandChange(band.copy(ratio = it)) }
-        ParamSlider("Tiempo de ataque", band.attackMs, 0.5f..100f, "%.1f ms", enabled) { onBandChange(band.copy(attackMs = it)) }
-        ParamSlider("Tiempo de liberación", band.releaseMs, 10f..800f, "%.0f ms", enabled) { onBandChange(band.copy(releaseMs = it)) }
-        ParamSlider("Ganancia de compensación", band.makeupGainDb, 0f..12f, "+%.1f dB", enabled) { onBandChange(band.copy(makeupGainDb = it)) }
-        ParamSlider("Knee", band.kneeDb, 0f..24f, "%.1f dB", enabled) { onBandChange(band.copy(kneeDb = it)) }
+
+        ParamSlider("Umbral", band.thresholdDb, -60f..0f, "%.1f dB", enabled) {
+            onBandChange(band.copy(thresholdDb = it))
+        }
+        ParamSlider("Relación", band.ratio, 1f..20f, "%.1f:1", enabled) {
+            onBandChange(band.copy(ratio = it))
+        }
+        ParamSlider("Tiempo de ataque", band.attackMs, 0.5f..100f, "%.1f ms", enabled) {
+            onBandChange(band.copy(attackMs = it))
+        }
+        ParamSlider("Tiempo de liberación", band.releaseMs, 10f..800f, "%.0f ms", enabled) {
+            onBandChange(band.copy(releaseMs = it))
+        }
+        ParamSlider("Ganancia de compensación", band.makeupGainDb, 0f..12f, "+%.1f dB", enabled) {
+            onBandChange(band.copy(makeupGainDb = it))
+        }
     }
 }
 
 @Composable
-private fun ParamSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>,
-                        format: String, enabled: Boolean, onValueChange: (Float) -> Unit) {
+private fun ParamSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    format: String,
+    enabled: Boolean,
+    onValueChange: (Float) -> Unit
+) {
     Column {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-            Text(label, 11.sp, color = SbzTextSecondary)
-            Text(format.format(value), 11.sp, FontFamily.Monospace, color = SbzTextPrimary)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = SbzTextSecondary
+            )
+            Text(
+                text = format.format(value),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                color = SbzTextPrimary
+            )
         }
-        Slider(value, onValueChange, valueRange = range, enabled = enabled,
-            colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            enabled = enabled,
+            colors = SliderDefaults.colors(
+                thumbColor = SbzCyan,
+                activeTrackColor = SbzCyan
+            )
+        )
     }
-}
-
-private fun frequencyToSlider(hz: Float): Float {
-    val minHz = 20f
-    val maxHz = 20000f
-    return ((kotlin.math.ln(hz.coerceIn(minHz, maxHz).toDouble()) - kotlin.math.ln(minHz.toDouble())) /
-            (kotlin.math.ln(maxHz.toDouble()) - kotlin.math.ln(minHz.toDouble()))).toFloat()
-}
-
-private fun sliderToFrequency(value: Float): Float {
-    val minHz = 20.0
-    val maxHz = 20000.0
-    return kotlin.math.exp(kotlin.math.ln(minHz) + value.coerceIn(0f, 1f) *
-            (kotlin.math.ln(maxHz) - kotlin.math.ln(minHz))).toFloat()
-}
-
-private fun formatFrequency(hz: Float): String = when {
-    hz >= 1000f -> "%.2f kHz".format(hz / 1000f)
-    hz >= 100f -> "%.0f Hz".format(hz)
-    else -> "%.1f Hz".format(hz)
 }

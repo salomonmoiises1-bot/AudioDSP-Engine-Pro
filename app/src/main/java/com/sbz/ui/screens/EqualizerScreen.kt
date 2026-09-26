@@ -25,7 +25,12 @@ import com.sbz.ui.theme.*
 fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val config by viewModel.config.collectAsState()
 
-    Column(modifier.fillMaxSize().background(SbzBackground).padding(horizontal = 12.dp, vertical = 8.dp)) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(SbzBackground)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
         EqCurveVisualizer(
             eqGains = config.eqGains,
             toneBassDb = config.toneBassDb,
@@ -33,31 +38,61 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             toneTrebleDb = config.toneTrebleDb,
             modifier = Modifier.fillMaxWidth()
         )
+
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column {
-                Text("ECUALIZADOR GRÁFICO ISO DE 32 BANDAS", 11.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
+                Text(
+                    text = "ECUALIZADOR GRÁFICO ISO DE 32 BANDAS",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = SbzCyan
+                )
                 val maxGain = config.eqGains.maxOrNull() ?: 0f
                 val minGain = config.eqGains.minOrNull() ?: 0f
-                Text("Máx.: +%.1f dB / Mín.: %.1f dB • Pasos de 0,5 dB".format(maxGain, minGain),
-                    10.sp, FontFamily.Monospace, color = SbzTextSecondary)
+                Text(
+                    text = "Máx.: +%.1f dB / Mín.: %.1f dB • Pasos de 0,5 dB".format(maxGain, minGain),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = SbzTextSecondary
+                )
             }
+
             OutlinedButton(
-                { viewModel.resetEq() },
+                onClick = { viewModel.resetEq() },
                 shape = RoundedCornerShape(6.dp),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = SbzCyan),
                 border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
             ) {
-                Icon(Icons.Default.RestartAlt, "Plano", Modifier.size(14.dp))
+                Icon(
+                    imageVector = Icons.Default.RestartAlt,
+                    contentDescription = "Plano",
+                    modifier = Modifier.size(14.dp)
+                )
                 Spacer(Modifier.width(4.dp))
-                Text("Plano (0 dB)", 11.sp)
+                Text(
+                    text = "Plano (0 dB)",
+                    fontSize = 11.sp
+                )
             }
         }
+
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
             LazyRow(
-                Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp)
             ) {

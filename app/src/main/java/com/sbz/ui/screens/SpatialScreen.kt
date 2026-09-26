@@ -21,35 +21,109 @@ import com.sbz.ui.theme.*
 fun SpatialScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val config by viewModel.config.collectAsState()
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.virtualizerEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)) {
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (config.virtualizerEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder
+            )
+        ) {
             Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column {
-                        Text("VIRTUALIZADOR DE HARDWARE", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
-                        Text("Etapa espacial nativa de Android AudioEffect", 11.sp, color = SbzTextSecondary)
+                        Text(
+                            text = "VIRTUALIZADOR DE HARDWARE",
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzCyan
+                        )
+                        Text(
+                            text = "Etapa espacial nativa de Android AudioEffect",
+                            fontSize = 11.sp,
+                            color = SbzTextSecondary
+                        )
                     }
-                    Switch(config.virtualizerEnabled,
-                        { viewModel.setVirtualizer(it, config.virtualizerStrength) },
-                        colors = SwitchDefaults.colors(checkedThumbColor = SbzCyan, checkedTrackColor = SbzCyanDim))
+
+                    Switch(
+                        checked = config.virtualizerEnabled,
+                        onCheckedChange = {
+                            viewModel.setVirtualizer(it, config.virtualizerStrength)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SbzCyan,
+                            checkedTrackColor = SbzCyanDim
+                        )
+                    )
                 }
+
                 Spacer(Modifier.height(16.dp))
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Text("Intensidad de expansión espacial", 12.sp, color = SbzTextSecondary)
-                    Text("${config.virtualizerStrength / 10}%", 14.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Intensidad de expansión espacial",
+                        fontSize = 12.sp,
+                        color = SbzTextSecondary
+                    )
+                    Text(
+                        text = "${config.virtualizerStrength / 10}%",
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = SbzCyan
+                    )
                 }
-                Slider(config.virtualizerStrength.toFloat(),
-                    { viewModel.setVirtualizer(config.virtualizerEnabled, it.toInt().toShort()) },
-                    valueRange = 0f..1000f, enabled = config.virtualizerEnabled,
-                    colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
+
+                Slider(
+                    value = config.virtualizerStrength.toFloat(),
+                    onValueChange = {
+                        viewModel.setVirtualizer(
+                            config.virtualizerEnabled,
+                            it.toInt().toShort()
+                        )
+                    },
+                    valueRange = 0f..1000f,
+                    enabled = config.virtualizerEnabled,
+                    colors = SliderDefaults.colors(
+                        thumbColor = SbzCyan,
+                        activeTrackColor = SbzCyan
+                    )
+                )
+
                 Spacer(Modifier.height(8.dp))
-                Row(Alignment.CenterVertically, Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Headphones, null, tint = SbzCyan, modifier = Modifier.size(16.dp))
-                    Text("La expansión acústica del virtualizador se disfruta mejor con auriculares o altavoces estéreo.",
-                        11.sp, color = SbzTextSecondary)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Headphones,
+                        contentDescription = null,
+                        tint = SbzCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "La expansión acústica del virtualizador se disfruta mejor con auriculares o altavoces estéreo.",
+                        fontSize = 11.sp,
+                        color = SbzTextSecondary
+                    )
                 }
             }
         }

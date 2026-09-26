@@ -1,6 +1,5 @@
 package com.sbz.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,274 +18,93 @@ import com.sbz.ui.MainViewModel
 import com.sbz.ui.theme.*
 
 @Composable
-fun OutputScreen(
-    viewModel: MainViewModel,
-    modifier: Modifier = Modifier
-) {
+fun OutputScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val config by viewModel.config.collectAsState()
-    val scrollState = rememberScrollState()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Master Gain Stage
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "GANANCIA DE SALIDA MAESTRA",
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = SbzCyan
-                    )
-                    Text(
-                        text = if (config.masterGainDb > 0f) "+%.1f dB".format(config.masterGainDb) else "%.1f dB".format(config.masterGainDb),
-                        fontSize = 14.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = if (config.masterGainDb > 0f) SbzAmber else SbzTextPrimary
-                    )
+            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Text("GANANCIA MAESTRA DE SALIDA", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
+                    Text(if (config.masterGainDb > 0f) "+%.1f dB".format(config.masterGainDb) else "%.1f dB".format(config.masterGainDb),
+                        14.sp, FontFamily.Monospace, FontWeight.Bold,
+                        color = if (config.masterGainDb > 0f) SbzAmber else SbzTextPrimary)
                 }
-
-                Slider(
-                    value = config.masterGainDb,
-                    onValueChange = { viewModel.setMasterGain(it) },
-                    valueRange = -24f..12f,
-                    steps = 71, // 0.5 dB
-                    colors = SliderDefaults.colors(
-                        thumbColor = SbzCyan,
-                        activeTrackColor = SbzCyan
-                    )
-                )
+                Slider(config.masterGainDb, { viewModel.setMasterGain(it) },
+                    valueRange = -24f..12f, steps = 71,
+                    colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
             }
         }
 
-        // Stereo Balance Stage
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "BALANCE ESTÉREO",
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = SbzTextPrimary
-                    )
+            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                    Text("BALANCE ESTÉREO", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzTextPrimary)
                     val balText = when {
                         config.balance == 0f -> "CENTRO"
-                        config.balance < 0f -> "L %.0f%%".format(-config.balance * 100f)
-                        else -> "R %.0f%%".format(config.balance * 100f)
+                        config.balance < 0f -> "I %.0f%%".format(-config.balance * 100f)
+                        else -> "D %.0f%%".format(config.balance * 100f)
                     }
-                    Text(
-                        text = balText,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = SbzCyan
-                    )
+                    Text(balText, 12.sp, FontFamily.Monospace, color = SbzCyan)
                 }
-
-                Slider(
-                    value = config.balance,
-                    onValueChange = { viewModel.setBalance(it) },
-                    valueRange = -1f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = SbzCyan,
-                        activeTrackColor = SbzCyan
-                    )
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("IZQUIERDA (100%)", fontSize = 10.sp, color = SbzTextSecondary)
-                    Text("CENTRO", fontSize = 10.sp, color = SbzTextSecondary)
-                    Text("DERECHA (100%)", fontSize = 10.sp, color = SbzTextSecondary)
+                Slider(config.balance, { viewModel.setBalance(it) }, valueRange = -1f..1f,
+                    colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("IZQUIERDA (100%)", 10.sp, color = SbzTextSecondary)
+                    Text("CENTRO", 10.sp, color = SbzTextSecondary)
+                    Text("DERECHA (100%)", 10.sp, color = SbzTextSecondary)
                 }
             }
         }
 
-        // Limiter & Protection Stage
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzCardBg),
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzCardBg),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.limiterEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (config.limiterEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)) {
+            Column(Modifier.padding(16.dp)) {
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Column {
-                        Text(
-                            text = "LIMITADOR Y PROTECCIÓN DIGITAL",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = SbzCyan
-                        )
-                        Text(
-                            text = "Etapa final brickwall de DynamicsProcessing nativo",
-                            fontSize = 11.sp,
-                            color = SbzTextSecondary
-                        )
+                        Text("LIMITADOR Y PROTECCIÓN DIGITAL", 12.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzCyan)
+                        Text("Etapa final brickwall nativa de DynamicsProcessing", 11.sp, color = SbzTextSecondary)
                     }
-
                     Switch(
-                        checked = config.limiterEnabled,
-                        onCheckedChange = {
-                            viewModel.setLimiter(
-                                it,
-                                config.limiterThresholdDb,
-                                config.limiterAttackMs,
-                                config.limiterReleaseMs,
-                                config.limiterRatio,
-                                config.limiterPostGainDb
-                            )
+                        config.limiterEnabled,
+                        {
+                            viewModel.setLimiter(it, config.limiterThresholdDb, config.limiterAttackMs,
+                                config.limiterReleaseMs, config.limiterRatio, config.limiterPostGainDb)
                         },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = SbzCyan,
-                            checkedTrackColor = SbzCyanDim
-                        )
+                        colors = SwitchDefaults.colors(checkedThumbColor = SbzCyan, checkedTrackColor = SbzCyanDim)
                     )
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Threshold
-                LimiterSlider(
-                    label = "Techo / Umbral",
-                    value = config.limiterThresholdDb,
-                    range = -12f..0f,
-                    unit = "dB",
-                    enabled = config.limiterEnabled,
-                    onValueChange = {
-                        viewModel.setLimiter(
-                            config.limiterEnabled,
-                            it,
-                            config.limiterAttackMs,
-                            config.limiterReleaseMs,
-                            config.limiterRatio,
-                            config.limiterPostGainDb
-                        )
-                    }
-                )
-
-                // Attack
-                LimiterSlider(
-                    label = "Tiempo de ataque",
-                    value = config.limiterAttackMs,
-                    range = 0.1f..10f,
-                    unit = "ms",
-                    enabled = config.limiterEnabled,
-                    onValueChange = {
-                        viewModel.setLimiter(
-                            config.limiterEnabled,
-                            config.limiterThresholdDb,
-                            it,
-                            config.limiterReleaseMs,
-                            config.limiterRatio,
-                            config.limiterPostGainDb
-                        )
-                    }
-                )
-
-                // Release
-                LimiterSlider(
-                    label = "Tiempo de liberación",
-                    value = config.limiterReleaseMs,
-                    range = 10f..400f,
-                    unit = "ms",
-                    enabled = config.limiterEnabled,
-                    onValueChange = {
-                        viewModel.setLimiter(
-                            config.limiterEnabled,
-                            config.limiterThresholdDb,
-                            config.limiterAttackMs,
-                            it,
-                            config.limiterRatio,
-                            config.limiterPostGainDb
-                        )
-                    }
-                )
-
-                // Ratio
-                LimiterSlider(
-                    label = "Relación de compresión",
-                    value = config.limiterRatio,
-                    range = 10f..50f,
-                    unit = ":1",
-                    enabled = config.limiterEnabled,
-                    onValueChange = {
-                        viewModel.setLimiter(
-                            config.limiterEnabled,
-                            config.limiterThresholdDb,
-                            config.limiterAttackMs,
-                            config.limiterReleaseMs,
-                            it,
-                            config.limiterPostGainDb
-                        )
-                    }
-                )
+                Spacer(Modifier.height(14.dp))
+                LimiterSlider("Techo / Umbral", config.limiterThresholdDb, -12f..0f, "dB", config.limiterEnabled) {
+                    viewModel.setLimiter(config.limiterEnabled, it, config.limiterAttackMs, config.limiterReleaseMs, config.limiterRatio, config.limiterPostGainDb)
+                }
+                LimiterSlider("Tiempo de ataque", config.limiterAttackMs, 0.1f..10f, "ms", config.limiterEnabled) {
+                    viewModel.setLimiter(config.limiterEnabled, config.limiterThresholdDb, it, config.limiterReleaseMs, config.limiterRatio, config.limiterPostGainDb)
+                }
+                LimiterSlider("Tiempo de liberación", config.limiterReleaseMs, 10f..400f, "ms", config.limiterEnabled) {
+                    viewModel.setLimiter(config.limiterEnabled, config.limiterThresholdDb, config.limiterAttackMs, it, config.limiterRatio, config.limiterPostGainDb)
+                }
+                LimiterSlider("Relación de compresión", config.limiterRatio, 10f..50f, ":1", config.limiterEnabled) {
+                    viewModel.setLimiter(config.limiterEnabled, config.limiterThresholdDb, config.limiterAttackMs, config.limiterReleaseMs, it, config.limiterPostGainDb)
+                }
             }
         }
 
-        // Digital Safety Status Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = SbzSurface),
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = SbzSurface),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
-        ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = null,
-                    tint = SbzGreen,
-                    modifier = Modifier.size(24.dp)
-                )
+            border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)) {
+            Row(Modifier.padding(14.dp), Alignment.CenterVertically, Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Default.Shield, null, tint = SbzGreen, modifier = Modifier.size(24.dp))
                 Column {
-                    Text(
-                        text = "SANITIZACIÓN Y PROTECCIÓN DSP ACTIVAS",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = SbzGreen
-                    )
-                    Text(
-                        text = "Rechazo continuo de NaN, infinito y desbordamiento digital activo en el flujo de audio nativo.",
-                        fontSize = 11.sp,
-                        color = SbzTextSecondary
-                    )
+                    Text("DEPURACIÓN Y PROTECCIÓN DEL DSP ACTIVAS", 11.sp, FontFamily.Monospace, FontWeight.Bold, color = SbzGreen)
+                    Text("Rechazo continuo de NaN, Infinity y desbordamientos digitales activo en el flujo de audio nativo.",
+                        11.sp, color = SbzTextSecondary)
                 }
             }
         }
@@ -294,36 +112,14 @@ fun OutputScreen(
 }
 
 @Composable
-private fun LimiterSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    unit: String,
-    enabled: Boolean,
-    onValueChange: (Float) -> Unit
-) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(label, fontSize = 11.sp, color = SbzTextSecondary)
-            Text(
-                "%.1f %s".format(value, unit),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                color = SbzTextPrimary
-            )
+private fun LimiterSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>,
+                          unit: String, enabled: Boolean, onValueChange: (Float) -> Unit) {
+    Column(Modifier.padding(vertical = 4.dp)) {
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+            Text(label, 11.sp, color = SbzTextSecondary)
+            Text("%.1f %s".format(value, unit), 11.sp, FontFamily.Monospace, color = SbzTextPrimary)
         }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = SbzCyan,
-                activeTrackColor = SbzCyan
-            )
-        )
+        Slider(value, onValueChange, valueRange = range, enabled = enabled,
+            colors = SliderDefaults.colors(thumbColor = SbzCyan, activeTrackColor = SbzCyan))
     }
 }

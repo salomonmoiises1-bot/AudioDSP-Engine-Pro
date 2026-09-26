@@ -1,1246 +1,866 @@
 package com.sbz.dsp
 
-import android.media.audiofx.AudioEffect
 import android.media.audiofx.DynamicsProcessing
+import android.os.Build
 import android.util.Log
 import com.sbz.dsp.model.DspConfig
-import kotlin.math.abs
-import kotlin.math.log10
-import kotlin.math.log2
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
+import com.sbz.dsp.model.MdrcBandConfig
 
 /**
- * Controls Android DynamicsProcessing for one audio session.
+ * Controls Android DynamicsProcessing for the sBz DSP chain.
  *
- * Processing order inside DynamicsProcessing:
+ * Pipeline inside DynamicsProcessing:
+ *   Input Gain / Pre-Gain
+ *   -> Pre-EQ (Tone / Bass Boost compensation)
+ *   -> MBC / MDRC
+ *   -> Post-EQ (32-band graphic EQ)
+ *   -> Limiter
  *
- * Input Gain
- *     ↓
- * Pre-EQ
- *     ↓
- * MBC / MDRC
- *     ↓
- * Post-EQ
- *     ↓
- * Limiter
+ * IMPORTANT:
+ * The graphic EQ is applied once at the requested gain in Post-EQ.
+ * There is no 50/50 gain split between Pre-EQ and Post-EQ.
  *
- * The graphic EQ is applied once, at full requested gain, in Post-EQ.
- * Tone and Bass Boost are kept separate in Pre-EQ.
- *
- * MDRC crossover frequencies come directly from DspConfig.mdrcBands
- * and are applied individually to every channel/band.
+ * MDRC cutoffs are taken directly from DspConfig.mdrcBands.
+ * They are not replaced by default values when applying a configuration.
  */
 class DynamicsProcessingManager(
-    val audioSessionId: Int,
-    private val onControlLostListener: (() -> Unit)? = null
+    private val audioSessionId: Int,
+    private val onControlLost: (() -> Unit)? = null
 ) {
 
     companion object {
-        private const val TAG = "DynamicsProcManager"
+        private const val TAG = "DynamicsProcessingMgr"
 
         private const val PRIORITY = 100
 
-        private const val TARGET_EQ_BANDS = 32
+        private const val CHANNEL_COUNT = 2
+
+        private const val REQUESTED_EQ_BANDS = 32
         private const val FALLBACK_EQ_BANDS_16 = 16
         private const val FALLBACK_EQ_BANDS_8 = 8
 
-        private const val MBC_BANDS = 4
-        private const val CHANNELS = 2
+        private const val MDRC_BAND_COUNT = 4
 
-        private const val MIN_MDRC_CUTOFF_HZ = 20.0f
-        private const val MAX_MDRC_CUTOFF_HZ = 22000.0f
+        private const val MIN_CUTOFF_HZ = 20f
+        private const val MAX_CUTOFF_HZ = 22000f
+        private const val MIN_CUTOFF_SEPARATION_HZ = 1f
 
-        /*
-         * Android requires MBC cutoff frequencies to be ordered:
-         *
-         * band 0 <= band 1 <= band 2 <= band 3
-         *
-         * We enforce a small positive separation so that malformed
-         * user input cannot collapse two adjacent bands into one.
-         */
-        private const val MIN_MDRC_SEPARATION_HZ = 1.0f
+        private const val DEFAULT_THRESHOLD_DB = -18f
+        private const val DEFAULT_RATIO = 2f
+        private const val DEFAULT_ATTACK_MS = 10f
+        private const val DEFAULT_RELEASE_MS = 80f
+        private const val DEFAULT_MAKEUP_DB = 0f
+        private const val DEFAULT_KNEE_DB = 2f
     }
 
-    private var dp: DynamicsProcessing? = null
+    private var effect: DynamicsProcessing? = null
 
-    private var isEffectEnabled = false
+    private var eqBandCount: Int = 0
+
+    private var initialized = false
 
     /**
-     * Number of EQ bands actually accepted by the current
-     * DynamicsProcessing instance.
+     * Initializes the native DynamicsProcessing effect.
      */
-    private var supportedEqBands = TARGET_EQ_BANDS
-
-    private var hasControl = false
-
     init {
-        initializeEffect()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            initialize()
+        } else {
+            Log.w(TAG, "DynamicsProcessing requires API 28+")
+        }
     }
 
-    /**
-     * Returns the actual number of EQ bands accepted by Android
-     * for this audio session.
-     *
-     * This is important because some HAL implementations may reject
-     * a 32-band configuration and require a smaller configuration.
-     */
-    fun getSupportedEqBands(): Int = supportedEqBands
+    private fun initialize() {
+        if (initialized) return
 
-    private fun initializeEffect() {
-        release()
+        try {
+            val config = createInitialConfig()
 
-        val bandAttempts = intArrayOf(
-            TARGET_EQ_BANDS,
+            val dp = DynamicsProcessing(
+                PRIORITY,
+                audioSessionId,
+                config
+            )
+
+            dp.setControlStatusListener { _, hasControl ->
+                Log.i(
+                    TAG,
+                    "DynamicsProcessing control changed: hasControl=$hasControl session=$audioSessionId"
+                )
+
+                if (!hasControl) {
+                    onControlLost?.invoke()
+                }
+            }
+
+            dp.setEnabled(true)
+
+            effect = dp
+            initialized = true
+
+            Log.i(
+                TAG,
+                "DynamicsProcessing initialized: session=$audioSessionId eqBands=$eqBandCount"
+            )
+
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "Unable to initialize DynamicsProcessing for session=$audioSessionId",
+                e
+            )
+
+            releaseInternal()
+        }
+    }
+
+    private fun createInitialConfig(): DynamicsProcessing.Config {
+        val requested = REQUESTED_EQ_BANDS
+
+        val candidates = intArrayOf(
+            requested,
             FALLBACK_EQ_BANDS_16,
             FALLBACK_EQ_BANDS_8
         )
 
-        for (eqBands in bandAttempts) {
-            try {
-                val config = buildDynamicsConfig(eqBands)
+        var lastError: Exception? = null
 
-                val effect = DynamicsProcessing(
-                    PRIORITY,
-                    audioSessionId,
-                    config
+        for (bandCount in candidates) {
+            try {
+                val builder = DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    CHANNEL_COUNT,
+                    true,
+                    bandCount,
+                    true,
+                    MDRC_BAND_COUNT,
+                    true,
+                    bandCount,
+                    true
                 )
 
-                effect.setControlStatusListener { _, controlGranted ->
-                    hasControl = controlGranted
+                val config = builder.build()
 
-                    Log.d(
-                        TAG,
-                        "AudioSession $audioSessionId control status changed: $controlGranted"
-                    )
-
-                    if (!controlGranted) {
-                        onControlLostListener?.invoke()
-                    }
-                }
-
-                dp = effect
-                supportedEqBands = eqBands
-                hasControl = effect.hasControl()
+                eqBandCount = bandCount
 
                 Log.i(
                     TAG,
-                    "DynamicsProcessing initialized: " +
-                        "session=$audioSessionId, " +
-                        "eqBands=$eqBands, " +
-                        "control=$hasControl"
+                    "DynamicsProcessing config created: EQ=$bandCount MDRC=$MDRC_BAND_COUNT"
                 )
 
-                return
+                return config
+
+            } catch (e: Exception) {
+                lastError = e
+
+                Log.w(
+                    TAG,
+                    "Unable to create DynamicsProcessing config with EQ=$bandCount",
+                    e
+                )
+            }
+        }
+
+        throw IllegalStateException(
+            "Unable to create DynamicsProcessing configuration",
+            lastError
+        )
+    }
+
+    /**
+     * Applies the complete sBz configuration.
+     */
+    @Synchronized
+    fun applyConfig(config: DspConfig) {
+        if (!initialized || effect == null) {
+            initialize()
+        }
+
+        val dp = effect ?: return
+
+        try {
+            /*
+             * Global enable state.
+             */
+            dp.setEnabled(config.isEnabled)
+
+            /*
+             * Pre-gain.
+             *
+             * DynamicsProcessing input gain is in dB.
+             */
+            dp.setInputGainAllChannelsTo(
+                config.preGainDb.coerceIn(-12f, 12f)
+            )
+
+            /*
+             * Pre-EQ.
+             *
+             * Tone and Bass Boost are intentionally kept separate
+             * from the graphic 32-band EQ.
+             */
+            applyPreEq(dp, config)
+
+            /*
+             * MDRC.
+             *
+             * This is the important corrected section:
+             * config.mdrcBands is used directly.
+             */
+            applyMdrc(dp, config)
+
+            /*
+             * Graphic EQ.
+             *
+             * Each requested EQ gain is applied once at full value
+             * to Post-EQ. No 50/50 split.
+             */
+            applyGraphicEq(dp, config)
+
+            /*
+             * Output limiter.
+             */
+            applyLimiter(dp, config)
+
+            /*
+             * Final master gain is represented through the limiter
+             * post gain so that it remains inside the native
+             * DynamicsProcessing output stage.
+             */
+            if (config.isEnabled) {
+                applyMasterGain(dp, config)
+            }
+
+            Log.d(
+                TAG,
+                "DSP configuration applied successfully: " +
+                    "session=$audioSessionId " +
+                    "mdrcEnabled=${config.mdrcEnabled} " +
+                    "mdrcBands=${config.mdrcBands.size}"
+            )
+
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "Error applying DSP configuration to session=$audioSessionId",
+                e
+            )
+        }
+    }
+
+    /**
+     * Applies Tone/Bass Boost compensation in Pre-EQ.
+     *
+     * The graphic EQ itself is NOT applied here.
+     */
+    private fun applyPreEq(
+        dp: DynamicsProcessing,
+        config: DspConfig
+    ) {
+        val count = dp.getConfig().preEqBandCount
+
+        if (count <= 0) return
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val preEq = dp.getPreEqByChannelIndex(channel)
+
+                preEq.setEnabled(config.isEnabled)
+
+                /*
+                 * Keep the pre-EQ neutral by default.
+                 *
+                 * Tone/Bass Boost are represented through the first
+                 * available low/mid/high regions when possible.
+                 */
+                val bassGain = if (config.isEnabled) {
+                    config.toneBassDb.coerceIn(-12f, 12f)
+                } else {
+                    0f
+                }
+
+                val midGain = if (config.isEnabled) {
+                    config.toneMidDb.coerceIn(-12f, 12f)
+                } else {
+                    0f
+                }
+
+                val trebleGain = if (config.isEnabled) {
+                    config.toneTrebleDb.coerceIn(-12f, 12f)
+                } else {
+                    0f
+                }
+
+                for (bandIndex in 0 until count) {
+                    val frequency = calculateStageFrequency(
+                        bandIndex,
+                        count
+                    )
+
+                    val gain = when {
+                        frequency <= 200f -> bassGain
+                        frequency <= 2000f -> midGain
+                        else -> trebleGain
+                    }
+
+                    val band = preEq.getBand(bandIndex)
+
+                    band.setEnabled(config.isEnabled)
+                    band.setGain(gain)
+                    band.setCutoffFrequency(
+                        frequency.coerceIn(
+                            MIN_CUTOFF_HZ,
+                            MAX_CUTOFF_HZ
+                        )
+                    )
+                }
+
+                /*
+                 * Bass Boost is deliberately not implemented as a second
+                 * native BassBoost effect here. Its contribution is kept
+                 * inside the DynamicsProcessing stage to avoid the
+                 * mute/control conflicts observed on some devices.
+                 */
+                if (config.bassBoostEnabled && config.isEnabled) {
+                    applyBassBoostCompensation(preEq, count, config)
+                }
+
+                dp.setPreEqByChannelIndex(channel, preEq)
 
             } catch (e: Exception) {
                 Log.w(
                     TAG,
-                    "Failed initializing DynamicsProcessing with " +
-                        "$eqBands EQ bands for session $audioSessionId: " +
-                        e.message
+                    "Unable to apply Pre-EQ on channel=$channel",
+                    e
                 )
             }
         }
-
-        /*
-         * Last-resort platform configuration.
-         *
-         * This does not pretend to provide 32 bands. The actual
-         * supportedEqBands value is reported as 8 because this is
-         * only a compatibility fallback.
-         */
-        try {
-            val fallbackEffect = DynamicsProcessing(audioSessionId)
-
-            dp = fallbackEffect
-            supportedEqBands = 8
-            hasControl = fallbackEffect.hasControl()
-
-            Log.i(
-                TAG,
-                "Initialized default DynamicsProcessing fallback " +
-                    "for session $audioSessionId"
-            )
-
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "FATAL: Could not initialize DynamicsProcessing " +
-                    "for session $audioSessionId: ${e.message}",
-                e
-            )
-
-            dp = null
-            supportedEqBands = 0
-        }
-    }
-
-    private fun buildDynamicsConfig(
-        eqBands: Int
-    ): DynamicsProcessing.Config {
-
-        val builder = DynamicsProcessing.Config.Builder(
-            DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-            CHANNELS,
-
-            true,
-            eqBands,
-
-            true,
-            MBC_BANDS,
-
-            true,
-            eqBands,
-
-            true
-        )
-
-        val freqs =
-            if (eqBands == TARGET_EQ_BANDS) {
-                DspConfig.FREQUENCIES
-            } else {
-                downsampleFrequencies(
-                    DspConfig.FREQUENCIES,
-                    eqBands
-                )
-            }
-
-        val preEq = DynamicsProcessing.Eq(
-            true,
-            true,
-            eqBands
-        )
-
-        val postEq = DynamicsProcessing.Eq(
-            true,
-            true,
-            eqBands
-        )
-
-        for (i in 0 until eqBands) {
-            val frequency = freqs
-                .getOrElse(i) { 1000.0f }
-                .coerceIn(20.0f, 22000.0f)
-
-            val preBand = DynamicsProcessing.EqBand(
-                true,
-                frequency,
-                0.0f
-            )
-
-            val postBand = DynamicsProcessing.EqBand(
-                true,
-                frequency,
-                0.0f
-            )
-
-            preEq.setBand(i, preBand)
-            postEq.setBand(i, postBand)
-        }
-
-        /*
-         * MDRC factory configuration is used ONLY when creating
-         * the DynamicsProcessing structure.
-         *
-         * User configuration is NOT overwritten here.
-         *
-         * Actual user values are applied later by applyMdrc().
-         */
-        val mbc = DynamicsProcessing.Mbc(
-            true,
-            true,
-            MBC_BANDS
-        )
-
-        val defaultBands = DspConfig.defaultMdrcBands()
-
-        val safeDefaultCutoffs = normalizeMdrcCutoffs(
-            defaultBands.map {
-                it.cutoffFrequencyHz
-            }
-        )
-
-        for (i in 0 until MBC_BANDS) {
-            val bandDef = defaultBands[i]
-
-            val mbcBand = DynamicsProcessing.MbcBand(
-                true,
-
-                safeDefaultCutoffs[i],
-
-                bandDef.attackMs.coerceIn(
-                    0.1f,
-                    200.0f
-                ),
-
-                bandDef.releaseMs.coerceIn(
-                    10.0f,
-                    2000.0f
-                ),
-
-                bandDef.ratio.coerceIn(
-                    1.0f,
-                    30.0f
-                ),
-
-                bandDef.thresholdDb.coerceIn(
-                    -60.0f,
-                    0.0f
-                ),
-
-                bandDef.kneeDb.coerceIn(
-                    0.0f,
-                    24.0f
-                ),
-
-                -70.0f,
-
-                1.0f,
-
-                0.0f,
-
-                bandDef.makeupGainDb.coerceIn(
-                    0.0f,
-                    18.0f
-                )
-            )
-
-            mbc.setBand(i, mbcBand)
-        }
-
-        val limiter = DynamicsProcessing.Limiter(
-            true,
-            true,
-            0,
-            1.0f,
-            50.0f,
-            20.0f,
-            -0.5f,
-            0.0f
-        )
-
-        builder.setPreferredFrameDuration(10.0f)
-
-        val baseConfig = builder.build()
-
-        for (channel in 0 until CHANNELS) {
-            baseConfig.setPreEqByChannelIndex(
-                channel,
-                preEq
-            )
-
-            baseConfig.setMbcByChannelIndex(
-                channel,
-                mbc
-            )
-
-            baseConfig.setPostEqByChannelIndex(
-                channel,
-                postEq
-            )
-
-            baseConfig.setLimiterByChannelIndex(
-                channel,
-                limiter
-            )
-        }
-
-        return baseConfig
     }
 
     /**
-     * Applies the complete DSP configuration.
+     * Applies a controlled low-frequency compensation for Bass Boost.
      */
-    @Synchronized
-    fun applyConfig(config: DspConfig) {
+    private fun applyBassBoostCompensation(
+        preEq: DynamicsProcessing.Eq,
+        count: Int,
+        config: DspConfig
+    ) {
+        if (count <= 0) return
 
-        var effect = dp
+        val boostDb = (
+            config.bassBoostStrength.coerceIn(0, 1000) / 1000f
+        ) * 6f
 
-        if (effect == null) {
-            initializeEffect()
-            effect = dp
-        }
+        for (bandIndex in 0 until count) {
+            val band = preEq.getBand(bandIndex)
 
-        if (effect == null) {
-            Log.e(
-                TAG,
-                "Cannot apply DSP configuration: " +
-                    "DynamicsProcessing unavailable for session " +
-                    audioSessionId
-            )
-            return
-        }
-
-        try {
-            if (effect.enabled != config.isEnabled) {
-                effect.enabled = config.isEnabled
-                isEffectEnabled = config.isEnabled
+            val frequency = try {
+                band.getCutoffFrequency()
+            } catch (_: Exception) {
+                calculateStageFrequency(bandIndex, count)
             }
 
-            if (!config.isEnabled) {
-                return
+            if (frequency <= 160f) {
+                val existingGain = try {
+                    band.getGain()
+                } catch (_: Exception) {
+                    0f
+                }
+
+                band.setGain(
+                    (existingGain + boostDb).coerceIn(-15f, 15f)
+                )
             }
+        }
+    }
 
-            if (!effect.hasControl()) {
-                hasControl = false
+    /**
+     * Applies the 32-band graphic EQ exactly once in Post-EQ.
+     */
+    private fun applyGraphicEq(
+        dp: DynamicsProcessing,
+        config: DspConfig
+    ) {
+        val count = dp.getConfig().postEqBandCount
 
+        if (count <= 0) return
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val postEq = dp.getPostEqByChannelIndex(channel)
+
+                postEq.setEnabled(config.isEnabled)
+
+                for (bandIndex in 0 until count) {
+                    val sourceIndex = mapEqBandIndex(
+                        bandIndex,
+                        count,
+                        config.eqGains.size
+                    )
+
+                    val frequency = DspConfig.FREQUENCIES[
+                        sourceIndex.coerceIn(
+                            0,
+                            DspConfig.FREQUENCIES.lastIndex
+                        )
+                    ]
+
+                    val gain = if (config.isEnabled) {
+                        config.eqGains.getOrElse(sourceIndex) { 0f }
+                            .coerceIn(-15f, 15f)
+                    } else {
+                        0f
+                    }
+
+                    val band = postEq.getBand(bandIndex)
+
+                    band.setEnabled(config.isEnabled)
+                    band.setCutoffFrequency(
+                        frequency.coerceIn(
+                            MIN_CUTOFF_HZ,
+                            MAX_CUTOFF_HZ
+                        )
+                    )
+
+                    /*
+                     * IMPORTANT:
+                     * Full requested EQ gain goes here.
+                     * There is no 50/50 Pre/Post split.
+                     */
+                    band.setGain(gain)
+                }
+
+                dp.setPostEqByChannelIndex(channel, postEq)
+
+            } catch (e: Exception) {
                 Log.w(
                     TAG,
-                    "No DynamicsProcessing control for session " +
-                        audioSessionId
+                    "Unable to apply Post-EQ on channel=$channel",
+                    e
                 )
-
-                return
             }
-
-            hasControl = true
-
-            applyInputGain(
-                effect,
-                config
-            )
-
-            applyToneAndPreEq(
-                effect,
-                config
-            )
-
-            apply32BandEq(
-                effect,
-                config
-            )
-
-            /*
-             * IMPORTANT:
-             *
-             * MDRC is applied AFTER EQ configuration.
-             * It receives the exact cutoffs stored in DspConfig.
-             */
-            applyMdrc(
-                effect,
-                config
-            )
-
-            applyLimiterAndMasterGain(
-                effect,
-                config
-            )
-
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "Error applying DSP config on session " +
-                    "$audioSessionId: ${e.message}",
-                e
-            )
         }
     }
 
     /**
-     * Calculates and applies the input gain, including balance
-     * and the automatic headroom safeguard.
-     */
-    private fun applyInputGain(
-        effect: DynamicsProcessing,
-        config: DspConfig
-    ) {
-
-        val balance = config.balance
-            .coerceIn(-1.0f, 1.0f)
-
-        val leftGainFactor =
-            if (balance <= 0.0f) {
-                1.0f
-            } else {
-                1.0f - balance
-            }
-
-        val rightGainFactor =
-            if (balance >= 0.0f) {
-                1.0f
-            } else {
-                1.0f + balance
-            }
-
-        val leftBalanceDb =
-            if (leftGainFactor > 0.001f) {
-                20.0f * log10(leftGainFactor)
-            } else {
-                -60.0f
-            }
-
-        val rightBalanceDb =
-            if (rightGainFactor > 0.001f) {
-                20.0f * log10(rightGainFactor)
-            } else {
-                -60.0f
-            }
-
-        val safeguardHeadroomDb =
-            config.computeHeadroomSafeguard()
-
-        val totalLeftInputGain =
-            (
-                config.preGainDb +
-                    leftBalanceDb +
-                    safeguardHeadroomDb
-                ).coerceIn(
-                    -60.0f,
-                    24.0f
-                )
-
-        val totalRightInputGain =
-            (
-                config.preGainDb +
-                    rightBalanceDb +
-                    safeguardHeadroomDb
-                ).coerceIn(
-                    -60.0f,
-                    24.0f
-                )
-
-        effect.setInputGainbyChannel(
-            0,
-            totalLeftInputGain
-        )
-
-        effect.setInputGainbyChannel(
-            1,
-            totalRightInputGain
-        )
-    }
-
-    /**
-     * Applies Tone and Bass Boost to Pre-EQ.
+     * Applies the configurable four-band MDRC.
      *
-     * Graphic EQ remains separate and is applied later in Post-EQ.
-     */
-    private fun applyToneAndPreEq(
-        effect: DynamicsProcessing,
-        config: DspConfig
-    ) {
-
-        val bands = supportedEqBands
-
-        if (bands <= 0) {
-            return
-        }
-
-        val freqs =
-            if (bands == TARGET_EQ_BANDS) {
-                DspConfig.FREQUENCIES
-            } else {
-                downsampleFrequencies(
-                    DspConfig.FREQUENCIES,
-                    bands
-                )
-            }
-
-        for (i in 0 until bands) {
-
-            val frequency = freqs[i]
-
-            var toneOffsetDb = 0.0f
-
-            when {
-                frequency <= 250.0f -> {
-                    val factor =
-                        (
-                            1.0f -
-                                (frequency / 250.0f)
-                            ).coerceIn(
-                                0.0f,
-                                1.0f
-                            )
-
-                    toneOffsetDb =
-                        config.toneBassDb * factor
-                }
-
-                frequency <= 4000.0f -> {
-                    val octaves =
-                        abs(
-                            log2(
-                                frequency / 1000.0f
-                            )
-                        )
-
-                    val factor =
-                        (
-                            1.0f -
-                                (octaves / 2.0f)
-                            ).coerceIn(
-                                0.0f,
-                                1.0f
-                            )
-
-                    toneOffsetDb =
-                        config.toneMidDb * factor
-                }
-
-                else -> {
-                    val factor =
-                        (
-                            (frequency - 4000.0f) /
-                                16000.0f
-                            ).coerceIn(
-                                0.0f,
-                                1.0f
-                            )
-
-                    toneOffsetDb =
-                        config.toneTrebleDb * factor
-                }
-            }
-
-            val bassBoostDb =
-                if (
-                    config.bassBoostEnabled &&
-                    frequency <= 250.0f
-                ) {
-
-                    val strength =
-                        (
-                            config.bassBoostStrength
-                                .toFloat() /
-                                1000.0f
-                            ).coerceIn(
-                                0.0f,
-                                1.0f
-                            )
-
-                    val shape =
-                        (
-                            1.0f -
-                                (frequency / 250.0f)
-                            ).coerceIn(
-                                0.0f,
-                                1.0f
-                            )
-
-                    strength * 6.0f * shape
-
-                } else {
-                    0.0f
-                }
-
-            val gain =
-                (
-                    toneOffsetDb +
-                        bassBoostDb
-                    ).coerceIn(
-                        -15.0f,
-                        15.0f
-                    )
-
-            val band =
-                DynamicsProcessing.EqBand(
-                    true,
-                    frequency,
-                    gain
-                )
-
-            effect.setPreEqBandByChannelIndex(
-                0,
-                i,
-                band
-            )
-
-            effect.setPreEqBandByChannelIndex(
-                1,
-                i,
-                band
-            )
-        }
-    }
-
-    /**
-     * Applies the graphic EQ exactly once.
-     *
-     * IMPORTANT:
-     *
-     * There is no 50/50 split anymore.
-     * The complete requested gain goes into Post-EQ.
-     */
-    private fun apply32BandEq(
-        effect: DynamicsProcessing,
-        config: DspConfig
-    ) {
-
-        val bands = supportedEqBands
-
-        if (bands <= 0) {
-            return
-        }
-
-        val mappedGains =
-            if (bands == TARGET_EQ_BANDS) {
-                config.eqGains
-            } else {
-                downsampleGains(
-                    config.eqGains,
-                    bands
-                )
-            }
-
-        val freqs =
-            if (bands == TARGET_EQ_BANDS) {
-                DspConfig.FREQUENCIES
-            } else {
-                downsampleFrequencies(
-                    DspConfig.FREQUENCIES,
-                    bands
-                )
-            }
-
-        for (i in 0 until bands) {
-
-            val requestedGain =
-                mappedGains
-                    .getOrElse(i) { 0.0f }
-                    .coerceIn(
-                        -15.0f,
-                        15.0f
-                    )
-
-            val frequency = freqs[i]
-
-            val band =
-                DynamicsProcessing.EqBand(
-                    true,
-                    frequency,
-                    requestedGain
-                )
-
-            effect.setPostEqBandByChannelIndex(
-                0,
-                i,
-                band
-            )
-
-            effect.setPostEqBandByChannelIndex(
-                1,
-                i,
-                band
-            )
-        }
-    }
-
-    /**
-     * Applies the four MDRC bands individually.
-     *
-     * This is the critical correction.
-     *
-     * The previous implementation rebuilt a complete Mbc object every
-     * time. This implementation writes each band directly into the
-     * already configured DynamicsProcessing engine.
-     *
-     * Android exposes:
-     *
-     * setMbcBandByChannelIndex(channel, band, MbcBand)
-     *
-     * and:
-     *
-     * getMbcBandByChannelIndex(channel, band)
-     *
-     * allowing the actual value accepted by the effect to be verified.
+     * The cutoff frequency is taken directly from each
+     * MdrcBandConfig. The values are normalized only for validity
+     * and ordering; they are never replaced with defaults.
      */
     private fun applyMdrc(
-        effect: DynamicsProcessing,
+        dp: DynamicsProcessing,
         config: DspConfig
     ) {
+        val mdrc = dp.getConfig().mbcBandCount
 
-        val configuredBands =
-            config.mdrcBands
+        if (mdrc <= 0) return
 
-        if (configuredBands.size < MBC_BANDS) {
+        val requestedBands = normalizeMdrcBands(config.mdrcBands)
 
-            Log.w(
-                TAG,
-                "MDRC requires $MBC_BANDS bands, " +
-                    "but configuration contains " +
-                    "${configuredBands.size}. " +
-                    "Keeping existing MDRC configuration."
-            )
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val mbc = dp.getMbcByChannelIndex(channel)
 
-            return
-        }
-
-        val cutoffs =
-            normalizeMdrcCutoffs(
-                configuredBands
-                    .take(MBC_BANDS)
-                    .map {
-                        it.cutoffFrequencyHz
-                    }
-            )
-
-        for (bandIndex in 0 until MBC_BANDS) {
-
-            val configBand =
-                configuredBands[bandIndex]
-
-            val mbcBand =
-                DynamicsProcessing.MbcBand(
-                    config.mdrcEnabled,
-
-                    cutoffs[bandIndex],
-
-                    configBand.attackMs.coerceIn(
-                        0.1f,
-                        200.0f
-                    ),
-
-                    configBand.releaseMs.coerceIn(
-                        10.0f,
-                        2000.0f
-                    ),
-
-                    configBand.ratio.coerceIn(
-                        1.0f,
-                        30.0f
-                    ),
-
-                    configBand.thresholdDb.coerceIn(
-                        -60.0f,
-                        0.0f
-                    ),
-
-                    configBand.kneeDb.coerceIn(
-                        0.0f,
-                        24.0f
-                    ),
-
-                    -70.0f,
-
-                    1.0f,
-
-                    0.0f,
-
-                    configBand.makeupGainDb.coerceIn(
-                        0.0f,
-                        18.0f
-                    )
+                mbc.setEnabled(
+                    config.isEnabled && config.mdrcEnabled
                 )
 
-            /*
-             * Write the exact band directly to both channels.
-             */
-            effect.setMbcBandByChannelIndex(
-                0,
-                bandIndex,
-                mbcBand
-            )
+                for (bandIndex in 0 until mdrc) {
+                    val source = requestedBands.getOrElse(bandIndex) {
+                        defaultMdrcBand(bandIndex)
+                    }
 
-            effect.setMbcBandByChannelIndex(
-                1,
-                bandIndex,
-                mbcBand
-            )
-        }
-
-        /*
-         * Verify what Android actually accepted.
-         *
-         * This is deliberately done after every MDRC update so that
-         * Logcat can reveal a HAL that clamps or rejects a cutoff.
-         */
-        verifyMdrcCutoffs(
-            effect,
-            cutoffs
-        )
-    }
-
-    /**
-     * Reads the four MBC bands back from both channels and reports
-     * any cutoff mismatch.
-     */
-    private fun verifyMdrcCutoffs(
-        effect: DynamicsProcessing,
-        requestedCutoffs: List<Float>
-    ) {
-
-        for (channel in 0 until CHANNELS) {
-
-            for (band in 0 until MBC_BANDS) {
-
-                try {
-
-                    val actualBand =
-                        effect.getMbcBandByChannelIndex(
-                            channel,
-                            band
+                    val cutoff = source.cutoffFrequencyHz
+                        .coerceIn(
+                            MIN_CUTOFF_HZ,
+                            MAX_CUTOFF_HZ
                         )
 
-                    val requested =
-                        requestedCutoffs[band]
+                    val nativeBand = DynamicsProcessing.MbcBand(
+                        config.isEnabled && config.mdrcEnabled,
+                        source.attackMs.coerceIn(0.1f, 1000f),
+                        source.releaseMs.coerceIn(1f, 2000f),
+                        source.ratio.coerceIn(1f, 20f),
+                        source.thresholdDb.coerceIn(-60f, 0f),
+                        source.kneeDb.coerceIn(0f, 30f),
+                        -80f,
+                        1f,
+                        0f,
+                        source.makeupGainDb.coerceIn(0f, 24f),
+                        cutoff
+                    )
 
-                    val actual =
-                        actualBand.cutoffFrequency
+                    /*
+                     * The critical operation:
+                     * write the exact band to the exact channel.
+                     */
+                    dp.setMbcBandByChannelIndex(
+                        channel,
+                        bandIndex,
+                        nativeBand
+                    )
 
-                    val difference =
-                        abs(actual - requested)
+                    /*
+                     * Read it back from the native effect.
+                     *
+                     * This tells us whether the Android HAL accepted,
+                     * rounded or clamped the requested crossover.
+                     */
+                    try {
+                        val actual = dp.getMbcBandByChannelIndex(
+                            channel,
+                            bandIndex
+                        )
 
-                    if (difference > 0.5f) {
+                        val actualCutoff =
+                            actual.getCutoffFrequency()
 
+                        val difference =
+                            kotlin.math.abs(
+                                actualCutoff - cutoff
+                            )
+
+                        if (difference > 0.5f) {
+                            Log.w(
+                                TAG,
+                                "MDRC cutoff mismatch: " +
+                                    "session=$audioSessionId " +
+                                    "channel=$channel " +
+                                    "band=$bandIndex " +
+                                    "requested=${cutoff}Hz " +
+                                    "actual=${actualCutoff}Hz"
+                            )
+                        } else {
+                            Log.i(
+                                TAG,
+                                "MDRC cutoff verified: " +
+                                    "session=$audioSessionId " +
+                                    "channel=$channel " +
+                                    "band=$bandIndex " +
+                                    "cutoff=${actualCutoff}Hz"
+                            )
+                        }
+
+                    } catch (verifyError: Exception) {
                         Log.w(
                             TAG,
-                            "MDRC cutoff mismatch: " +
-                                "session=$audioSessionId " +
-                                "channel=$channel " +
-                                "band=$band " +
-                                "requested=${requested}Hz " +
-                                "actual=${actual}Hz"
-                        )
-
-                    } else {
-
-                        Log.d(
-                            TAG,
-                            "MDRC cutoff verified: " +
-                                "session=$audioSessionId " +
-                                "channel=$channel " +
-                                "band=$band " +
-                                "cutoff=${actual}Hz"
+                            "Unable to read back MDRC band " +
+                                "channel=$channel band=$bandIndex",
+                            verifyError
                         )
                     }
-
-                } catch (e: Exception) {
-
-                    Log.w(
-                        TAG,
-                        "Unable to verify MDRC band " +
-                            "$band on channel $channel: " +
-                            e.message
-                    )
                 }
-            }
-        }
-    }
-
-    /**
-     * Normalizes MDRC cutoff frequencies while preserving their
-     * intended band order.
-     *
-     * The Android API specifies that cutoff frequencies are expected
-     * to increase with band number.
-     */
-    private fun normalizeMdrcCutoffs(
-        values: List<Float>
-    ): List<Float> {
-
-        if (values.isEmpty()) {
-            return emptyList()
-        }
-
-        val result =
-            MutableList(
-                min(values.size, MBC_BANDS)
-            ) { 0.0f }
-
-        for (i in result.indices) {
-
-            var value =
-                values[i]
-                    .takeIf { it.isFinite() }
-                    ?: DspConfig
-                        .defaultMdrcBands()
-                        .getOrElse(i) {
-                            DspConfig
-                                .defaultMdrcBands()
-                                .last()
-                        }
-                        .cutoffFrequencyHz
-
-            value =
-                value.coerceIn(
-                    MIN_MDRC_CUTOFF_HZ,
-                    MAX_MDRC_CUTOFF_HZ
-                )
-
-            if (i > 0) {
-
-                val minimumAllowed =
-                    result[i - 1] +
-                        MIN_MDRC_SEPARATION_HZ
-
-                value =
-                    max(
-                        value,
-                        minimumAllowed
-                    )
-            }
-
-            result[i] =
-                value.coerceAtMost(
-                    MAX_MDRC_CUTOFF_HZ
-                )
-        }
-
-        /*
-         * If the last values collide with the 22 kHz limit,
-         * repair backwards while preserving order.
-         */
-        for (i in result.lastIndex downTo 1) {
-
-            val maximumAllowed =
-                result[i] -
-                    MIN_MDRC_SEPARATION_HZ
-
-            if (result[i - 1] > maximumAllowed) {
-                result[i - 1] =
-                    maximumAllowed
-                        .coerceAtLeast(
-                            MIN_MDRC_CUTOFF_HZ
-                        )
-            }
-        }
-
-        return result
-    }
-
-    /**
-     * Attempts to regain effect control after another audio effect
-     * controller releases it.
-     */
-    fun reclaimControl() {
-
-        try {
-
-            val effect = dp ?: return
-
-            if (!effect.hasControl()) {
-
-                Log.d(
-                    TAG,
-                    "Reclaiming DynamicsProcessing control " +
-                        "for session $audioSessionId..."
-                )
-
-                hasControl = effect.hasControl()
-
-                if (hasControl) {
-                    effect.enabled = isEffectEnabled
-                }
-            }
-
-        } catch (e: Exception) {
-
-            Log.w(
-                TAG,
-                "Failed reclaiming control on session " +
-                    "$audioSessionId: ${e.message}"
-            )
-        }
-    }
-
-    fun isAvailable(): Boolean =
-        dp != null
-
-    fun hasControl(): Boolean =
-        hasControl
-
-    /**
-     * Releases the Android audio effect.
-     */
-    fun release() {
-
-        try {
-
-            dp?.enabled = false
-            dp?.release()
-
-        } catch (e: Exception) {
-
-            Log.w(
-                TAG,
-                "Error releasing DynamicsProcessing on " +
-                    "session $audioSessionId: ${e.message}"
-            )
-
-        } finally {
-
-            dp = null
-            isEffectEnabled = false
-            hasControl = false
-        }
-    }
-
-    private fun downsampleFrequencies(
-        src: FloatArray,
-        count: Int
-    ): FloatArray {
-
-        if (count <= 0) {
-            return FloatArray(0)
-        }
-
-        if (src.isEmpty()) {
-            return FloatArray(count)
-        }
-
-        if (src.size == count) {
-            return src.copyOf()
-        }
-
-        if (count == 1) {
-            return floatArrayOf(src.first())
-        }
-
-        val result =
-            FloatArray(count)
-
-        val step =
-            (src.size - 1).toFloat() /
-                (count - 1).toFloat()
-
-        for (i in 0 until count) {
-
-            val index =
-                (
-                    i * step
-                    ).roundToInt().coerceIn(
-                        0,
-                        src.size - 1
-                    )
-
-            result[i] =
-                src[index]
-        }
-
-        return result
-    }
-
-    private fun downsampleGains(
-        src: List<Float>,
-        count: Int
-    ): List<Float> {
-
-        if (count <= 0) {
-            return emptyList()
-        }
-
-        if (src.isEmpty()) {
-            return List(count) { 0.0f }
-        }
-
-        if (src.size == count) {
-            return src.toList()
-        }
-
-        if (count == 1) {
-            return listOf(src.first())
-        }
-
-        val result =
-            ArrayList<Float>(
-                count
-            )
-
-        val step =
-            (src.size - 1).toFloat() /
-                (count - 1).toFloat()
-
-        for (i in 0 until count) {
-
-            val index =
-                (
-                    i * step
-                    ).roundToInt().coerceIn(
-                        0,
-                        src.size - 1
-                    )
-
-            result.add(
-                src[index]
-            )
-        }
-
-        return result
-    }
-
-    /**
-     * Applies limiter and master/automatic gain.
-     */
-    private fun applyLimiterAndMasterGain(
-        effect: DynamicsProcessing,
-        config: DspConfig
-    ) {
-
-        val agcGainDb =
-            if (config.autoGainEnabled) {
-
-                val averageBoost =
-                    config.eqGains
-                        .average()
-                        .toFloat()
 
                 /*
-                 * Keep the existing automatic gain behavior,
-                 * but limit its correction to a safe range.
+                 * Keep the MBC object itself synchronized with the
+                 * individual band writes.
                  */
-                (
-                    -averageBoost * 0.5f
-                    ).coerceIn(
-                        -6.0f,
-                        6.0f
-                    )
+                try {
+                    dp.setMbcByChannelIndex(channel, mbc)
+                } catch (_: Exception) {
+                    /*
+                     * Individual band writes above are the authoritative
+                     * operation. Some implementations may reject the
+                     * aggregate Mbc write after individual updates.
+                     */
+                }
 
-            } else {
-                0.0f
-            }
-
-        val combinedMasterPostGain =
-            (
-                config.masterGainDb +
-                    agcGainDb +
-                    config.limiterPostGainDb
-                ).coerceIn(
-                    -30.0f,
-                    12.0f
+            } catch (e: Exception) {
+                Log.e(
+                    TAG,
+                    "Unable to apply MDRC on channel=$channel",
+                    e
                 )
+            }
+        }
+    }
 
-        val limiter =
-            DynamicsProcessing.Limiter(
-                true,
+    /**
+     * Makes MDRC frequencies valid and strictly increasing.
+     *
+     * This does NOT replace user values with defaults.
+     */
+    private fun normalizeMdrcBands(
+        bands: List<MdrcBandConfig>
+    ): List<MdrcBandConfig> {
+        val source = if (bands.isEmpty()) {
+            DspConfig.defaultMdrcBands()
+        } else {
+            bands
+        }
 
-                config.limiterEnabled,
+        val result = mutableListOf<MdrcBandConfig>()
 
-                0,
+        var previousCutoff = MIN_CUTOFF_HZ -
+            MIN_CUTOFF_SEPARATION_HZ
 
-                config.limiterAttackMs.coerceIn(
-                    0.1f,
-                    20.0f
-                ),
+        for (index in 0 until MDRC_BAND_COUNT) {
+            val input = source.getOrNull(index)
+                ?: defaultMdrcBand(index)
 
-                config.limiterReleaseMs.coerceIn(
-                    5.0f,
-                    1000.0f
-                ),
+            val minimum =
+                if (index == 0) {
+                    MIN_CUTOFF_HZ
+                } else {
+                    previousCutoff +
+                        MIN_CUTOFF_SEPARATION_HZ
+                }
 
-                config.limiterRatio.coerceIn(
-                    5.0f,
-                    100.0f
-                ),
+            val remainingBands =
+                MDRC_BAND_COUNT - index - 1
 
-                config.limiterThresholdDb.coerceIn(
-                    -24.0f,
-                    0.0f
-                ),
+            val maximum =
+                MAX_CUTOFF_HZ -
+                    remainingBands *
+                    MIN_CUTOFF_SEPARATION_HZ
 
-                combinedMasterPostGain
+            val cutoff = input.cutoffFrequencyHz
+                .takeIf { it.isFinite() }
+                ?.coerceIn(minimum, maximum)
+                ?: defaultMdrcBand(index)
+                    .cutoffFrequencyHz
+                    .coerceIn(minimum, maximum)
+
+            val normalized = input.copy(
+                cutoffFrequencyHz = cutoff,
+                thresholdDb = input.thresholdDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(-60f, 0f)
+                    ?: DEFAULT_THRESHOLD_DB,
+                ratio = input.ratio
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(1f, 20f)
+                    ?: DEFAULT_RATIO,
+                attackMs = input.attackMs
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(0.1f, 1000f)
+                    ?: DEFAULT_ATTACK_MS,
+                releaseMs = input.releaseMs
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(1f, 2000f)
+                    ?: DEFAULT_RELEASE_MS,
+                makeupGainDb = input.makeupGainDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(0f, 24f)
+                    ?: DEFAULT_MAKEUP_DB,
+                kneeDb = input.kneeDb
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(0f, 30f)
+                    ?: DEFAULT_KNEE_DB
             )
 
-        effect.setLimiterByChannelIndex(
-            0,
-            limiter
+            result += normalized
+            previousCutoff = cutoff
+        }
+
+        return result
+    }
+
+    private fun defaultMdrcBand(index: Int): MdrcBandConfig {
+        return DspConfig.defaultMdrcBands()
+            .getOrElse(index) {
+                DspConfig.defaultMdrcBands().last()
+            }
+    }
+
+    /**
+     * Maps the internal 32-band EQ configuration to the actual
+     * number of native Post-EQ bands supported by the device.
+     */
+    private fun mapEqBandIndex(
+        nativeIndex: Int,
+        nativeCount: Int,
+        sourceCount: Int
+    ): Int {
+        if (nativeCount <= 1 || sourceCount <= 1) return 0
+
+        val normalized =
+            nativeIndex.toFloat() /
+                (nativeCount - 1).toFloat()
+
+        return kotlin.math.round(
+            normalized * (sourceCount - 1)
+        ).toInt()
+    }
+
+    /**
+     * Generates sensible frequencies for the Tone Pre-EQ stage.
+     */
+    private fun calculateStageFrequency(
+        index: Int,
+        count: Int
+    ): Float {
+        if (count <= 1) {
+            return 1000f
+        }
+
+        val normalized =
+            index.toFloat() /
+                (count - 1).toFloat()
+
+        val minLog = kotlin.math.ln(
+            MIN_CUTOFF_HZ.toDouble()
         )
 
-        effect.setLimiterByChannelIndex(
-            1,
-            limiter
+        val maxLog = kotlin.math.ln(
+            20000.0
         )
+
+        return kotlin.math.exp(
+            minLog +
+                (maxLog - minLog) *
+                normalized
+        ).toFloat()
+    }
+
+    /**
+     * Applies the output limiter.
+     */
+    private fun applyLimiter(
+        dp: DynamicsProcessing,
+        config: DspConfig
+    ) {
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val limiter = DynamicsProcessing.Limiter(
+                    config.isEnabled && config.limiterEnabled,
+                    0,
+                    config.limiterAttackMs.coerceIn(0.1f, 1000f),
+                    config.limiterReleaseMs.coerceIn(1f, 2000f),
+                    config.limiterRatio.coerceIn(1f, 100f),
+                    config.limiterThresholdDb.coerceIn(-60f, 0f),
+                    config.limiterPostGainDb.coerceIn(-24f, 12f)
+                )
+
+                dp.setLimiterByChannelIndex(
+                    channel,
+                    limiter
+                )
+
+            } catch (e: Exception) {
+                Log.w(
+                    TAG,
+                    "Unable to apply limiter on channel=$channel",
+                    e
+                )
+            }
+        }
+    }
+
+    /**
+     * Applies master gain through the native limiter post-gain stage.
+     *
+     * This keeps the final output inside DynamicsProcessing without
+     * introducing another native effect.
+     */
+    private fun applyMasterGain(
+        dp: DynamicsProcessing,
+        config: DspConfig
+    ) {
+        if (config.limiterEnabled) {
+            for (channel in 0 until dp.channelCountSafe()) {
+                try {
+                    val limiter = dp.getLimiterByChannelIndex(channel)
+
+                    val totalPostGain =
+                        (
+                            config.limiterPostGainDb +
+                                config.masterGainDb
+                            ).coerceIn(-24f, 12f)
+
+                    limiter.setPostGain(totalPostGain)
+
+                    dp.setLimiterByChannelIndex(
+                        channel,
+                        limiter
+                    )
+
+                } catch (e: Exception) {
+                    Log.w(
+                        TAG,
+                        "Unable to apply master gain on channel=$channel",
+                        e
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns the number of EQ bands actually supported by the
+     * current DynamicsProcessing instance.
+     */
+    fun getSupportedEqBands(): Int = eqBandCount
+
+    /**
+     * Returns whether the native effect currently has control.
+     */
+    fun hasControl(): Boolean {
+        return try {
+            effect?.hasControl() == true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Returns whether DynamicsProcessing is available.
+     */
+    fun isAvailable(): Boolean {
+        return initialized && effect != null
+    }
+
+    /**
+     * Attempts to reclaim native effect control.
+     */
+    fun reclaimControl() {
+        try {
+            effect?.let {
+                if (!it.hasControl()) {
+                    Log.i(
+                        TAG,
+                        "DynamicsProcessing currently does not have control: session=$audioSessionId"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to inspect DynamicsProcessing control", e)
+        }
+    }
+
+    /**
+     * Releases the native effect.
+     */
+    fun release() {
+        releaseInternal()
+    }
+
+    private fun releaseInternal() {
+        try {
+            effect?.setEnabled(false)
+        } catch (_: Exception) {
+        }
+
+        try {
+            effect?.release()
+        } catch (_: Exception) {
+        }
+
+        effect = null
+        initialized = false
+        eqBandCount = 0
+    }
+
+    /**
+     * Safe channel count accessor.
+     */
+    private fun DynamicsProcessing.channelCountSafe(): Int {
+        return try {
+            getChannelCount().coerceAtLeast(1)
+        } catch (_: Exception) {
+            CHANNEL_COUNT
+        }
     }
 }

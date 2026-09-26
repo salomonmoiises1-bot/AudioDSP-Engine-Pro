@@ -137,6 +137,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateConfig(current.copy(mdrcBands = newBands))
     }
 
+    fun setHallEnabled(enabled: Boolean) {
+        val current = _config.value
+        updateConfig(current.copy(hallEnabled = enabled))
+    }
+
+    fun setHallMix(percent: Float) {
+        updateConfig(_config.value.copy(hallMixPercent = percent.coerceIn(0f, 100f)))
+    }
+
+    fun setHallDecayTime(ms: Float) {
+        updateConfig(_config.value.copy(hallDecayTimeMs = ms.coerceIn(100f, 20_000f)))
+    }
+
+    fun setHallDecayHfRatio(ratio: Float) {
+        updateConfig(_config.value.copy(hallDecayHfRatio = ratio.coerceIn(0.1f, 2.0f)))
+    }
+
+    fun setHallDensity(percent: Float) {
+        updateConfig(_config.value.copy(hallDensityPercent = percent.coerceIn(0f, 100f)))
+    }
+
+    fun setHallDiffusion(percent: Float) {
+        updateConfig(_config.value.copy(hallDiffusionPercent = percent.coerceIn(0f, 100f)))
+    }
+
+    fun setHallReflectionsDelay(ms: Float) {
+        updateConfig(_config.value.copy(hallReflectionsDelayMs = ms.coerceIn(0f, 300f)))
+    }
+
+    fun setHallReflectionsLevel(db: Float) {
+        updateConfig(_config.value.copy(hallReflectionsLevelDb = db.coerceIn(-90f, 10f)))
+    }
+
+    fun setHallReverbDelay(ms: Float) {
+        updateConfig(_config.value.copy(hallReverbDelayMs = ms.coerceIn(0f, 100f)))
+    }
+
+    fun setHallRoomHfLevel(db: Float) {
+        updateConfig(_config.value.copy(hallRoomHfLevelDb = db.coerceIn(-90f, 0f)))
+    }
+
+    fun setHallRoomLevel(db: Float) {
+        updateConfig(_config.value.copy(hallRoomLevelDb = db.coerceIn(-90f, 0f)))
+    }
+
     fun setAutoGain(enabled: Boolean, targetDb: Float) {
         val current = _config.value
         updateConfig(current.copy(autoGainEnabled = enabled, autoGainTargetDb = targetDb))

@@ -31,8 +31,20 @@ data class Preset(
             return out.map { (kotlin.math.round(it * 2f) / 2f).coerceIn(-15f, 15f) }
         }
 
-        private fun preset(id: String, name: String, category: String, config: DspConfig): Preset =
-            Preset(id = id, name = name, category = category, isSystem = true, config = config)
+        private fun preset(id: String, name: String, category: String, config: DspConfig): Preset {
+            val effectiveConfig = if (config.mdrcBands == DspConfig.defaultMdrcBands()) {
+                config.copy(mdrcBands = DspConfig.mdrcProfileForPresetForFactory(id))
+            } else {
+                config
+            }
+            return Preset(
+                id = id,
+                name = name,
+                category = category,
+                isSystem = true,
+                config = effectiveConfig
+            )
+        }
 
         fun createDefaultPresets(): List<Preset> = listOf(
             preset("system_flat", "Studio Reference Flat", "Escucha", DspConfig()),

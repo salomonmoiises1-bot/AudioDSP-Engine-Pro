@@ -102,6 +102,73 @@ data class DspConfig(
     }
 
     /**
+     * MDRC profiles used by factory presets.
+     * Loading a preset therefore changes the actual multiband compressor state.
+     */
+    fun mdrcProfile(profile: String): List<MdrcBandConfig> {
+        val base = defaultMdrcBands()
+        fun b(i: Int, cutoff: Float, threshold: Float, ratio: Float,
+              attack: Float, release: Float, makeup: Float) =
+            base[i].copy(
+                cutoffFrequencyHz = cutoff,
+                thresholdDb = threshold,
+                ratio = ratio,
+                attackMs = attack,
+                releaseMs = release,
+                makeupGainDb = makeup
+            )
+
+        return when (profile.lowercase()) {
+            "bass" -> listOf(
+                b(0, 140f, -20f, 3.0f, 20f, 150f, 1.5f),
+                b(1, 700f, -18f, 2.5f, 14f, 100f, 1.0f),
+                b(2, 4200f, -14f, 2.0f, 7f, 70f, 0.5f),
+                b(3, 20000f, -12f, 1.8f, 3f, 45f, 0.0f)
+            )
+            "punch" -> listOf(
+                b(0, 180f, -16f, 3.5f, 8f, 90f, 1.0f),
+                b(1, 900f, -15f, 2.8f, 6f, 70f, 0.8f),
+                b(2, 4500f, -13f, 2.4f, 4f, 55f, 0.5f),
+                b(3, 20000f, -11f, 2.0f, 2f, 40f, 0.0f)
+            )
+            "bright" -> listOf(
+                b(0, 180f, -18f, 2.0f, 18f, 130f, 0.5f),
+                b(1, 850f, -17f, 2.0f, 12f, 90f, 0.5f),
+                b(2, 5000f, -16f, 2.8f, 4f, 55f, 1.0f),
+                b(3, 18000f, -14f, 2.5f, 2f, 35f, 0.5f)
+            )
+            "speech" -> listOf(
+                b(0, 160f, -24f, 2.0f, 25f, 180f, 0.0f),
+                b(1, 700f, -20f, 2.2f, 15f, 120f, 0.5f),
+                b(2, 3500f, -16f, 3.0f, 5f, 70f, 1.0f),
+                b(3, 20000f, -18f, 2.0f, 2f, 50f, 0.0f)
+            )
+            "wide" -> listOf(
+                b(0, 160f, -19f, 2.2f, 15f, 120f, 0.5f),
+                b(1, 800f, -17f, 2.0f, 10f, 85f, 0.5f),
+                b(2, 4000f, -15f, 2.2f, 5f, 60f, 0.5f),
+                b(3, 20000f, -13f, 2.0f, 2f, 40f, 0.0f)
+            )
+            else -> base
+        }
+    }
+
+    internal fun mdrcProfileForPresetForFactory(id: String): List<MdrcBandConfig> =
+        when {
+            id.contains("deep_bass") || id.contains("bass_punch") ||
+                id.contains("hiphop") || id.contains("electronic") ||
+                id.contains("edm") || id.contains("reggae") -> mdrcProfile("bass")
+            id.contains("party") || id.contains("concert") -> mdrcProfile("punch")
+            id.contains("bright") || id.contains("acoustic") ||
+                id.contains("country") -> mdrcProfile("bright")
+            id.contains("speech") || id.contains("podcast") ||
+                id.contains("radio") || id.contains("vocal") -> mdrcProfile("speech")
+            id.contains("wide") || id.contains("live") ||
+                id.contains("gaming") -> mdrcProfile("wide")
+            else -> defaultMdrcBands()
+        }
+
+    /**
      * Compute safe internal headroom attenuation to prevent digital clipping
      * when high positive EQ, Tone, and Bass Boost are combined.
      */

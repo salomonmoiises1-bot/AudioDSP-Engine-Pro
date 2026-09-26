@@ -178,6 +178,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val saved = presetRepo.saveCustomPreset(name, _config.value)
         _presets.value = presetRepo.getAllPresets()
         _selectedPresetId.value = saved.id
+        presetRepo.setSelectedPresetId(saved.id)
+        // Keep the active state synchronized even when the service is already bound.
+        presetRepo.saveActiveConfig(_config.value)
     }
 
     fun deletePreset(id: String) {
@@ -211,7 +214,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun updateConfig(newConfig: DspConfig) {
         _config.value = newConfig
-        audioService?.updateConfig(newConfig) ?: presetRepo.saveActiveConfig(newConfig)
+        // Persist immediately. The service also persists, but doing it here
+        // guarantees changes survive UI/service lifecycle transitions.
+        presetRepo.saveActiveConfig(newConfig)
+        audioService?.updateConfig(newConfig)
     }
 
     override fun onCleared() {

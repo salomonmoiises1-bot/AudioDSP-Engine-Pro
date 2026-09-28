@@ -136,9 +136,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateMdrcBand(index: Int, band: MdrcBandConfig) {
         val current = _config.value
         if (index !in current.mdrcBands.indices) return
+
         val newBands = current.mdrcBands.toMutableList()
         newBands[index] = band
-        updateConfig(current.copy(mdrcBands = newBands))
+        val newConfig = current.copy(mdrcBands = newBands)
+
+        // MDRC crossover faders use a surgical native update. This prevents
+        // every drag event from rebuilding the complete DSP chain.
+        _config.value = newConfig
+        audioService?.updateMdrcBand(newConfig, index)
+
+        // Keep persistence debounced so storage is not written per motion event.
+        schedulePersist(newConfig)
     }
 
     fun setHallEnabled(enabled: Boolean) {

@@ -17,6 +17,9 @@ import com.sbz.service.SbzAudioService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -42,6 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isServiceBound: StateFlow<Boolean> = _isServiceBound.asStateFlow()
 
     private var audioService: SbzAudioService? = null
+    private var persistJob: Job? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -224,8 +228,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _presets.value = presetRepo.getAllPresets()
         _selectedPresetId.value = saved.id
         presetRepo.setSelectedPresetId(saved.id)
-        // Keep the active state synchronized even when the service is already bound.
-        presetRepo.saveActiveConfig(_config.value)
+        schedulePersist(_config.value, immediate = true)
     }
 
     fun deletePreset(id: String) {
@@ -259,10 +262,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun updateConfig(newConfig: DspConfig) {
         _config.value = newConfig
-        // Persist immediately. The service also persists, but doing it here
-        // guarantees changes survive UI/service lifecycle transitions.
-        presetRepo.saveActiveConfig(newConfig)
-        audioService?.updateConfig(newConfig)
+
+        // DSP changes are applied immediately, but disk persistence is debounced.
+        // This avoids SharedPreferences I/O on every fader movement.
+        audioService?.updateConfig(newConfig, persist = false)
+        schedulePersist(newConfig)
+    }
+
+    private fun schedulePersist(
+        config: DspConfig,
+        immediate: Boolean = false
+    ) {
+        persistJob?.cancel()
+        persistJob = viewModelScope.launch(Dispatchers.IO) {
+            if (!immediate) delay(250L)
+            presetRepo.saveActiveConfig(config)
+        }
     }
 
     override fun onCleared() {
@@ -271,6 +286,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } catch (e: Exception) {
             // Ignored
         }
+        persistJob?.cancel()
+        presetRepo.saveActiveConfig(_config.value)
         super.onCleared()
     }
 }

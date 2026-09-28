@@ -2,6 +2,7 @@ package com.sbz.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.sbz.dsp.model.DspConfig
 import com.sbz.dsp.model.Preset
 import org.json.JSONArray
@@ -79,7 +80,7 @@ class PresetRepository(context: Context) {
                 result.add(Preset(id = id, name = name, category = obj.optString("category", "Personalizados"), isSystem = false, config = config))
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("PresetRepository", "Unable to load custom presets", e)
         }
         return result
     }

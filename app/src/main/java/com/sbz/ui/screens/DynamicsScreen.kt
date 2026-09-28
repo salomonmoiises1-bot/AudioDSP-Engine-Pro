@@ -120,6 +120,8 @@ fun DynamicsScreen(
 
                         BandParameters(
                             band = activeBand,
+                            bandIndex = selectedBandIndex,
+                            allBands = config.mdrcBands,
                             enabled = config.mdrcEnabled
                         ) {
                             viewModel.updateMdrcBand(
@@ -402,36 +404,78 @@ fun DynamicsScreen(
 @Composable
 private fun BandParameters(
     band: MdrcBandConfig,
+    bandIndex: Int,
+    allBands: List<MdrcBandConfig>,
     enabled: Boolean,
     onBandChange: (MdrcBandConfig) -> Unit
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        val minimumCutoff = crossoverMinimumHz(
+            bandIndex = bandIndex,
+            allBands = allBands
+        )
+        val maximumCutoff = crossoverMaximumHz(
+            bandIndex = bandIndex,
+            allBands = allBands
+        )
+        val currentCutoff = band.cutoffFrequencyHz.coerceIn(
+            minimumCutoff,
+            maximumCutoff
+        )
+
+        Text(
+            text = "CORTES DEL CROSSOVER MDRC",
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            color = SbzCyan
+        )
+
+        Text(
+            text = "El corte de cada banda se aplica directamente al MBC nativo. Los cortes se mantienen ordenados para evitar solapamientos.",
+            fontSize = 11.sp,
+            color = SbzTextSecondary
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Frecuencia de corte del crossover",
+                text = "Frecuencia de corte",
                 fontSize = 12.sp,
                 color = SbzTextSecondary
             )
 
             Text(
-                text = formatFrequency(band.cutoffFrequencyHz),
+                text = formatFrequency(currentCutoff),
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 color = SbzCyan
             )
         }
 
+        Text(
+            text = "${formatFrequency(minimumCutoff)}  —  ${formatFrequency(maximumCutoff)}",
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            color = SbzTextSecondary
+        )
+
         Slider(
             value = frequencyToSlider(
-                band.cutoffFrequencyHz
+                currentCutoff,
+                minimumCutoff,
+                maximumCutoff
             ),
             onValueChange = {
-                val frequency = sliderToFrequency(it)
+                val frequency = sliderToFrequency(
+                    it,
+                    minimumCutoff,
+                    maximumCutoff
+                )
 
                 onBandChange(
                     band.copy(
@@ -615,41 +659,85 @@ private fun ParamSlider(
  * Audio crossover frequencies must be represented
  * logarithmically rather than linearly.
  */
-private fun frequencyToSlider(hz: Float): Float {
-    val minHz = 20.0
-    val maxHz = 22000.0
+private const val MDRC_MIN_CUTOFF_HZ = 20f
+private const val MDRC_MAX_CUTOFF_HZ = 22000f
+private const val MDRC_CUTOFF_GAP_HZ = 1f
 
-    val safeHz = hz
-        .coerceIn(
-            minHz.toFloat(),
-            maxHz.toFloat()
-        )
+private fun crossoverMinimumHz(
+    bandIndex: Int,
+    allBands: List<MdrcBandConfig>
+): Float {
+    return if (bandIndex <= 0) {
+        MDRC_MIN_CUTOFF_HZ
+    } else {
+        (
+            allBands.getOrNull(bandIndex - 1)?.cutoffFrequencyHz
+                ?: MDRC_MIN_CUTOFF_HZ
+            ) + MDRC_CUTOFF_GAP_HZ
+    }.coerceAtMost(MDRC_MAX_CUTOFF_HZ)
+}
+
+private fun crossoverMaximumHz(
+    bandIndex: Int,
+    allBands: List<MdrcBandConfig>
+): Float {
+    return if (bandIndex >= allBands.lastIndex) {
+        MDRC_MAX_CUTOFF_HZ
+    } else {
+        (
+            allBands.getOrNull(bandIndex + 1)?.cutoffFrequencyHz
+                ?: MDRC_MAX_CUTOFF_HZ
+            ) - MDRC_CUTOFF_GAP_HZ
+    }.coerceAtLeast(MDRC_MIN_CUTOFF_HZ)
+}
+
+private fun frequencyToSlider(
+    hz: Float,
+    minHz: Float,
+    maxHz: Float
+): Float {
+    val safeMin = minHz
+        .coerceIn(MDRC_MIN_CUTOFF_HZ, MDRC_MAX_CUTOFF_HZ)
         .toDouble()
+    val safeMax = maxHz
+        .coerceIn(safeMin.toFloat(), MDRC_MAX_CUTOFF_HZ)
+        .toDouble()
+    val safeHz = hz
+        .coerceIn(safeMin.toFloat(), safeMax.toFloat())
+        .toDouble()
+
+    if (safeMax <= safeMin) return 0f
 
     return (
         (
             kotlin.math.ln(safeHz) -
-                kotlin.math.ln(minHz)
+                kotlin.math.ln(safeMin)
             ) /
                 (
-                    kotlin.math.ln(maxHz) -
-                        kotlin.math.ln(minHz)
+                    kotlin.math.ln(safeMax) -
+                        kotlin.math.ln(safeMin)
                     )
         ).toFloat()
 }
 
 private fun sliderToFrequency(
-    value: Float
+    value: Float,
+    minHz: Float,
+    maxHz: Float
 ): Float {
-    val minHz = 20.0
-    val maxHz = 22000.0
+    val safeMin = minHz
+        .coerceIn(MDRC_MIN_CUTOFF_HZ, MDRC_MAX_CUTOFF_HZ)
+    val safeMax = maxHz
+        .coerceIn(safeMin, MDRC_MAX_CUTOFF_HZ)
+
+    if (safeMax <= safeMin) return safeMin
 
     return kotlin.math.exp(
-        kotlin.math.ln(minHz) +
+        kotlin.math.ln(safeMin.toDouble()) +
             value.coerceIn(0f, 1f) *
             (
-                kotlin.math.ln(maxHz) -
-                    kotlin.math.ln(minHz)
+                kotlin.math.ln(safeMax.toDouble()) -
+                    kotlin.math.ln(safeMin.toDouble())
                 )
     ).toFloat()
 }

@@ -157,6 +157,20 @@ class SbzAudioService : Service() {
         updateNotification()
     }
 
+    /**
+     * Apply one MDRC band without rebuilding the complete DSP configuration.
+     * Persistence is intentionally handled by MainViewModel's debounce.
+     */
+    fun updateMdrcBand(
+        newConfig: DspConfig,
+        bandIndex: Int
+    ) {
+        activeConfig = newConfig
+        dspExecutor.execute {
+            dspEngine.updateMdrcBand(newConfig, bandIndex)
+        }
+    }
+
     fun getCurrentConfig(): DspConfig = activeConfig
 
     private fun createNotificationChannel() {

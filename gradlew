@@ -118,4 +118,4 @@ if [ "$cygwin" = "false" -a "$darwin" = "false" -a "$nonstop" = "false" ] ; then
 fi
 
 # Collect all arguments for the java sub-shell.
-exec "$JAVACMD" "$@" -jar "$CLASSPATH"
+exec "$JAVACMD" -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"

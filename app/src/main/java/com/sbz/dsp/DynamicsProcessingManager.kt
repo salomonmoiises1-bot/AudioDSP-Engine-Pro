@@ -161,6 +161,69 @@ class DynamicsProcessingManager(
         )
     }
 
+    /**
+     * Update one MDRC band without rebuilding the rest of the DSP chain.
+     *
+     * The cutoff of a band is also the lower boundary of the following band,
+     * so changing one native MbcBand is sufficient for the crossover boundary
+     * to move. The complete list is only normalized for validation; only the
+     * requested native band is written to the effect.
+     */
+    @Synchronized
+    fun updateMdrcBand(
+        config: DspConfig,
+        bandIndex: Int
+    ) {
+        if (!initialized || effect == null) {
+            initialize()
+        }
+
+        val dp = effect ?: return
+        val mdrcCount = dp.getConfig().mbcBandCount
+
+        if (mdrcCount <= 0 || bandIndex !in 0 until mdrcCount) return
+
+        val requestedBands = normalizeMdrcBands(config.mdrcBands)
+        val source = requestedBands.getOrNull(bandIndex)
+            ?: defaultMdrcBand(bandIndex)
+
+        val mdrcActive = config.isEnabled && config.mdrcEnabled
+        val cutoff = source.cutoffFrequencyHz
+            .coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ)
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val nativeBand = DynamicsProcessing.MbcBand(
+                    mdrcActive,
+                    cutoff,
+                    source.attackMs.coerceIn(0.1f, 1000f),
+                    source.releaseMs.coerceIn(1f, 2000f),
+                    source.ratio.coerceIn(1f, 20f),
+                    source.thresholdDb.coerceIn(-60f, 0f),
+                    source.kneeDb.coerceIn(0f, 30f),
+                    -80f,
+                    1f,
+                    0f,
+                    source.makeupGainDb.coerceIn(0f, 24f)
+                )
+
+                // Surgical update: no MBC disable/enable cycle and no rewrite
+                // of the other three bands while the fader is moving.
+                dp.setMbcBandByChannelIndex(
+                    channel,
+                    bandIndex,
+                    nativeBand
+                )
+            } catch (e: Exception) {
+                Log.e(
+                    TAG,
+                    "Unable to update MDRC band=$bandIndex on channel=$channel",
+                    e
+                )
+            }
+        }
+    }
+
     @Synchronized
     fun applyConfig(config: DspConfig) {
         if (!initialized || effect == null) {
@@ -426,42 +489,26 @@ class DynamicsProcessingManager(
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
-                val mbc =
-                    dp.getMbcByChannelIndex(channel)
-
-                mbc.setEnabled(
-                    config.isEnabled &&
-                        config.mdrcEnabled
-                )
-
                 /*
-                 * Keep the MBC stage enabled/disabled.
+                 * Keep the MBC stage disabled while its bands are being
+                 * replaced. This prevents a partially-updated multiband
+                 * configuration from reaching the audio path and causing
+                 * clicks/noise when MDRC is toggled.
                  */
-                try {
-                    dp.setMbcByChannelIndex(
-                        channel,
-                        mbc
-                    )
-                } catch (e: Exception) {
-                    Log.w(
-                        TAG,
-                        "Unable to update MBC stage state " +
-                            "on channel=$channel",
-                        e
-                    )
-                }
+                val mdrcActive =
+                    config.isEnabled && config.mdrcEnabled
+
+                val mbc = dp.getMbcByChannelIndex(channel)
+                mbc.setEnabled(false)
+                dp.setMbcByChannelIndex(channel, mbc)
 
                 /*
-                 * Now write every band individually.
+                 * Write every band while the MBC stage is bypassed.
                  *
-                 * This is the authoritative write for:
-                 * - cutoff
-                 * - threshold
-                 * - ratio
-                 * - attack
-                 * - release
-                 * - knee
-                 * - makeup gain
+                 * Android's MbcBand constructor order is:
+                 * enabled, cutoffFrequency, attackTime, releaseTime,
+                 * ratio, threshold, kneeWidth, noiseGateThreshold,
+                 * expanderRatio, preGain, postGain.
                  */
                 for (bandIndex in 0 until mdrc) {
                     val source =
@@ -480,8 +527,8 @@ class DynamicsProcessingManager(
 
                     val nativeBand =
                         DynamicsProcessing.MbcBand(
-                            config.isEnabled &&
-                                config.mdrcEnabled,
+                            mdrcActive,
+                            cutoff,
                             source.attackMs.coerceIn(
                                 0.1f,
                                 1000f
@@ -508,8 +555,7 @@ class DynamicsProcessingManager(
                             source.makeupGainDb.coerceIn(
                                 0f,
                                 24f
-                            ),
-                            cutoff
+                            )
                         )
 
                     dp.setMbcBandByChannelIndex(
@@ -517,8 +563,16 @@ class DynamicsProcessingManager(
                         bandIndex,
                         nativeBand
                     )
-
                 }
+
+                /*
+                 * Enable the fully-configured MBC only after all bands
+                 * have been written.
+                 */
+                val finalMbc = dp.getMbcByChannelIndex(channel)
+                finalMbc.setEnabled(mdrcActive)
+                dp.setMbcByChannelIndex(channel, finalMbc)
+
 
             } catch (e: Exception) {
                 Log.e(

@@ -53,7 +53,8 @@ fun SbzFader(
     modifier: Modifier = Modifier,
     minGainDb: Float = -15.0f,
     maxGainDb: Float = 15.0f,
-    stepDb: Float = 0.5f
+    stepDb: Float = 0.5f,
+    label: String? = null
 ) {
     val formattedFreq = remember(frequencyHz) {
         if (frequencyHz >= 1000f) {
@@ -217,7 +218,7 @@ fun SbzFader(
 
         // Frequency Legend
         Text(
-            text = formattedFreq,
+            text = label ?: formattedFreq,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,

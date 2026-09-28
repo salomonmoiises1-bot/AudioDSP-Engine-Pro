@@ -16,6 +16,8 @@ import android.os.IBinder
 import android.util.Log
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import androidx.core.app.NotificationCompat
 import com.sbz.MainActivity
 import com.sbz.R
@@ -54,6 +56,9 @@ class SbzAudioService : Service() {
     private val dspExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "sBz-DSP").apply { isDaemon = true }
     }
+    // Never queue every intermediate fader position. Keep only the newest state.
+    private val pendingConfig = AtomicReference<DspConfig?>(null)
+    private val configWorkerScheduled = AtomicBoolean(false)
 
     inner class LocalBinder : Binder() {
         fun getService(): SbzAudioService = this@SbzAudioService
@@ -150,11 +155,28 @@ class SbzAudioService : Service() {
 
         // Native effect setters can block briefly on some HALs. Keep them off
         // the main/UI thread so fader dragging stays responsive.
-        dspExecutor.execute {
-            dspEngine.updateConfig(newConfig)
-        }
+        pendingConfig.set(newConfig)
+        scheduleLatestConfigApply()
 
         updateNotification()
+    }
+
+
+    private fun scheduleLatestConfigApply() {
+        if (!configWorkerScheduled.compareAndSet(false, true)) return
+        dspExecutor.execute {
+            try {
+                while (true) {
+                    val config = pendingConfig.getAndSet(null) ?: break
+                    dspEngine.updateConfig(config)
+                    // If UI generated newer values while native setters were running,
+                    // apply only the newest state on the next pass.
+                }
+            } finally {
+                configWorkerScheduled.set(false)
+                if (pendingConfig.get() != null) scheduleLatestConfigApply()
+            }
+        }
     }
 
     /**

@@ -133,6 +133,22 @@ class SbzDspEngine {
         updateState()
     }
 
+    /**
+     * Update only one MDRC band on every active pipeline.
+     *
+     * This is intentionally separate from updateConfig(): dragging an MDRC
+     * crossover must not rebuild/rewrite EQ, limiter, gain, virtualizer or
+     * the other MDRC bands on every UI event.
+     */
+    @Synchronized
+    fun updateMdrcBand(config: DspConfig, bandIndex: Int) {
+        currentConfig = config
+        for ((_, pipeline) in pipelines) {
+            pipeline.dynamicsProcessing.updateMdrcBand(config, bandIndex)
+        }
+        updateState()
+    }
+
     private fun applyConfigToSession(sessionId: Int, config: DspConfig) {
         pipelines[sessionId]?.let { pipeline ->
             applyConfigToPipeline(pipeline, config)

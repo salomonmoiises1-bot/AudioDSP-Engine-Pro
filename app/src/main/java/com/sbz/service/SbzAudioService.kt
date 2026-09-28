@@ -14,6 +14,8 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import androidx.core.app.NotificationCompat
 import com.sbz.MainActivity
 import com.sbz.R
@@ -49,6 +51,9 @@ class SbzAudioService : Service() {
     private lateinit var presetRepo: PresetRepository
     private lateinit var audioManager: AudioManager
     private var activeConfig = DspConfig()
+    private val dspExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "sBz-DSP").apply { isDaemon = true }
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): SbzAudioService = this@SbzAudioService
@@ -110,7 +115,7 @@ class SbzAudioService : Service() {
             }
             ACTION_TOGGLE_DSP -> {
                 val newEnabled = !activeConfig.isEnabled
-                updateConfig(activeConfig.copy(isEnabled = newEnabled))
+                updateConfig(activeConfig.copy(isEnabled = newEnabled), persist = true)
             }
             ACTION_ATTACH_SESSION -> {
                 val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
@@ -133,10 +138,22 @@ class SbzAudioService : Service() {
         return START_STICKY
     }
 
-    fun updateConfig(newConfig: DspConfig) {
+    fun updateConfig(
+        newConfig: DspConfig,
+        persist: Boolean = true
+    ) {
         activeConfig = newConfig
-        presetRepo.saveActiveConfig(newConfig)
-        dspEngine.updateConfig(newConfig)
+
+        if (persist) {
+            presetRepo.saveActiveConfig(newConfig)
+        }
+
+        // Native effect setters can block briefly on some HALs. Keep them off
+        // the main/UI thread so fader dragging stays responsive.
+        dspExecutor.execute {
+            dspEngine.updateConfig(newConfig)
+        }
+
         updateNotification()
     }
 
@@ -208,6 +225,7 @@ class SbzAudioService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "Error unregistering audioDeviceCallback: ${e.message}")
         }
+        dspExecutor.shutdownNow()
         dspEngine.stop()
         super.onDestroy()
     }

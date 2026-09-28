@@ -225,6 +225,108 @@ class DynamicsProcessingManager(
     }
 
     @Synchronized
+    fun updateMasterGain(config: DspConfig) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        if (!config.isEnabled) return
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val limiter = dp.getLimiterByChannelIndex(channel)
+                limiter.setPostGain(
+                    (config.limiterPostGainDb + config.masterGainDb)
+                        .coerceIn(-24f, 12f)
+                )
+                dp.setLimiterByChannelIndex(channel, limiter)
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to update master gain on channel=$channel", e)
+            }
+        }
+    }
+
+    @Synchronized
+    fun updateBalance(config: DspConfig) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        val count = dp.getConfig().postEqBandCount
+        if (count <= 0) return
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val postEq = dp.getPostEqByChannelIndex(channel)
+                for (nativeIndex in 0 until count) {
+                    val sourceIndex = mapEqBandIndex(nativeIndex, count, config.eqGains.size)
+                    val eqGain = if (config.isEnabled) config.eqGains.getOrElse(sourceIndex) { 0f } else 0f
+                    val gain = (eqGain + balanceCompensationDb(channel, config.balance))
+                        .coerceIn(-60f, 15f)
+                    postEq.getBand(nativeIndex).setGain(gain)
+                }
+                dp.setPostEqByChannelIndex(channel, postEq)
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to update balance on channel=$channel", e)
+            }
+        }
+    }
+
+    @Synchronized
+    fun updateTone(config: DspConfig) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        val count = dp.getConfig().preEqBandCount
+        if (count <= 0) return
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val preEq = dp.getPreEqByChannelIndex(channel)
+                for (bandIndex in 0 until count) {
+                    val frequency = calculateStageFrequency(bandIndex, count)
+                    val gain = when {
+                        !config.isEnabled -> 0f
+                        frequency <= 200f -> config.toneBassDb.coerceIn(-12f, 12f)
+                        frequency <= 2000f -> config.toneMidDb.coerceIn(-12f, 12f)
+                        else -> config.toneTrebleDb.coerceIn(-12f, 12f)
+                    }
+                    val band = preEq.getBand(bandIndex)
+                    band.setGain(gain)
+                    band.setEnabled(config.isEnabled)
+                }
+                if (config.bassBoostEnabled && config.isEnabled) {
+                    applyBassBoostCompensation(preEq, count, config)
+                }
+                dp.setPreEqByChannelIndex(channel, preEq)
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to update tone on channel=$channel", e)
+            }
+        }
+    }
+
+    @Synchronized
+    fun updateEqBand(config: DspConfig, sourceIndex: Int) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        if (sourceIndex !in config.eqGains.indices) return
+        val count = dp.getConfig().postEqBandCount
+        if (count <= 0) return
+
+        val nativeIndex = mapSourceBandToNativeIndex(sourceIndex, count, config.eqGains.size)
+        val frequency = DspConfig.FREQUENCIES[sourceIndex]
+        val eqGain = if (config.isEnabled) config.eqGains[sourceIndex].coerceIn(-15f, 15f) else 0f
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val postEq = dp.getPostEqByChannelIndex(channel)
+                val band = postEq.getBand(nativeIndex)
+                band.setEnabled(config.isEnabled)
+                band.setCutoffFrequency(frequency.coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
+                band.setGain((eqGain + balanceCompensationDb(channel, config.balance)).coerceIn(-60f, 15f))
+                dp.setPostEqByChannelIndex(channel, postEq)
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to update EQ band=$sourceIndex on channel=$channel", e)
+            }
+        }
+    }
+
+    @Synchronized
     fun applyConfig(config: DspConfig) {
         if (!initialized || effect == null) {
             initialize()
@@ -716,6 +818,12 @@ class DynamicsProcessingManager(
             normalized *
                 (sourceCount - 1)
         ).toInt()
+    }
+
+    private fun mapSourceBandToNativeIndex(sourceIndex: Int, nativeCount: Int, sourceCount: Int): Int {
+        if (nativeCount <= 1 || sourceCount <= 1) return 0
+        val normalized = sourceIndex.toFloat() / (sourceCount - 1).toFloat()
+        return kotlin.math.round(normalized * (nativeCount - 1)).toInt().coerceIn(0, nativeCount - 1)
     }
 
     private fun balanceCompensationDb(channel: Int, balance: Float): Float {

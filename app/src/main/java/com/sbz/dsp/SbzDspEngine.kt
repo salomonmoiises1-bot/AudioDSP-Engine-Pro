@@ -141,6 +141,69 @@ class SbzDspEngine {
      * the other MDRC bands on every UI event.
      */
     @Synchronized
+    fun updateRealtimeConfig(config: DspConfig) {
+        val previous = currentConfig
+        currentConfig = config
+
+        val eqChanged = previous.eqGains != config.eqGains
+        val changedEqIndices = if (eqChanged) {
+            config.eqGains.indices.filter { i -> previous.eqGains.getOrNull(i) != config.eqGains.getOrNull(i) }
+        } else emptyList()
+
+        val onlyFastChanges =
+            previous.isEnabled == config.isEnabled &&
+            previous.preGainDb == config.preGainDb &&
+            previous.bassBoostEnabled == config.bassBoostEnabled &&
+            previous.bassBoostStrength == config.bassBoostStrength &&
+            previous.mdrcEnabled == config.mdrcEnabled &&
+            previous.mdrcBands == config.mdrcBands &&
+            previous.hallEnabled == config.hallEnabled &&
+            previous.hallMixPercent == config.hallMixPercent &&
+            previous.hallDecayTimeMs == config.hallDecayTimeMs &&
+            previous.hallDecayHfRatio == config.hallDecayHfRatio &&
+            previous.hallDensityPercent == config.hallDensityPercent &&
+            previous.hallDiffusionPercent == config.hallDiffusionPercent &&
+            previous.hallReflectionsDelayMs == config.hallReflectionsDelayMs &&
+            previous.hallReflectionsLevelDb == config.hallReflectionsLevelDb &&
+            previous.hallReverbDelayMs == config.hallReverbDelayMs &&
+            previous.hallRoomHfLevelDb == config.hallRoomHfLevelDb &&
+            previous.hallRoomLevelDb == config.hallRoomLevelDb &&
+            previous.autoGainEnabled == config.autoGainEnabled &&
+            previous.autoGainTargetDb == config.autoGainTargetDb &&
+            previous.virtualizerEnabled == config.virtualizerEnabled &&
+            previous.virtualizerStrength == config.virtualizerStrength &&
+            previous.limiterEnabled == config.limiterEnabled &&
+            previous.limiterThresholdDb == config.limiterThresholdDb &&
+            previous.limiterAttackMs == config.limiterAttackMs &&
+            previous.limiterReleaseMs == config.limiterReleaseMs &&
+            previous.limiterRatio == config.limiterRatio &&
+            previous.limiterPostGainDb == config.limiterPostGainDb
+
+        if (!onlyFastChanges) {
+            updateConfig(config)
+            return
+        }
+
+        for (pipeline in pipelines.values) {
+            if (previous.masterGainDb != config.masterGainDb) {
+                pipeline.dynamicsProcessing.updateMasterGain(config)
+            }
+            if (previous.balance != config.balance) {
+                pipeline.dynamicsProcessing.updateBalance(config)
+            }
+            if (previous.toneBassDb != config.toneBassDb ||
+                previous.toneMidDb != config.toneMidDb ||
+                previous.toneTrebleDb != config.toneTrebleDb) {
+                pipeline.dynamicsProcessing.updateTone(config)
+            }
+            for (index in changedEqIndices) {
+                pipeline.dynamicsProcessing.updateEqBand(config, index)
+            }
+        }
+        updateState()
+    }
+
+    @Synchronized
     fun updateMdrcBand(config: DspConfig, bandIndex: Int) {
         currentConfig = config
         for ((_, pipeline) in pipelines) {

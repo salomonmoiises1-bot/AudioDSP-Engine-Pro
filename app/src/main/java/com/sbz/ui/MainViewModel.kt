@@ -86,12 +86,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setMasterGain(gainDb: Float) {
         val current = _config.value
-        updateConfig(current.copy(masterGainDb = gainDb.coerceIn(-24.0f, 12.0f)))
+        updateRealtimeConfig(current.copy(masterGainDb = gainDb.coerceIn(-24.0f, 12.0f)))
     }
 
     fun setBalance(balance: Float) {
         val current = _config.value
-        updateConfig(current.copy(balance = balance.coerceIn(-1.0f, 1.0f)))
+        updateRealtimeConfig(current.copy(balance = balance.coerceIn(-1.0f, 1.0f)))
     }
 
     fun setPreGain(gainDb: Float) {
@@ -106,7 +106,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTone(bassDb: Float, midDb: Float, trebleDb: Float) {
         val current = _config.value
-        updateConfig(
+        updateRealtimeConfig(
             current.copy(
                 toneBassDb = bassDb.coerceIn(-12.0f, 12.0f),
                 toneMidDb = midDb.coerceIn(-12.0f, 12.0f),
@@ -120,7 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (index !in current.eqGains.indices) return
         val newGains = current.eqGains.toMutableList()
         newGains[index] = gainDb.coerceIn(-15.0f, 15.0f)
-        updateConfig(current.copy(eqGains = newGains))
+        updateRealtimeConfig(current.copy(eqGains = newGains))
     }
 
     fun resetEq() {
@@ -267,6 +267,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             getApplication<Application>().startService(intent)
         }
+    }
+
+    private fun updateRealtimeConfig(newConfig: DspConfig) {
+        _config.value = newConfig
+        audioService?.updateRealtimeConfig(newConfig)
+        schedulePersist(newConfig)
     }
 
     private fun updateConfig(newConfig: DspConfig) {

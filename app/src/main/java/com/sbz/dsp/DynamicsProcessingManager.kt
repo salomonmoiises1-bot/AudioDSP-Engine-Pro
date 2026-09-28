@@ -49,9 +49,28 @@ class DynamicsProcessingManager(
         private const val DEFAULT_KNEE_DB = 2f
     }
 
+    data class EqBackendInfo(
+        val requestedBandCount: Int,
+        val actualBandCount: Int,
+        val frequenciesHz: List<Float>,
+        val channelCount: Int,
+        val isAvailable: Boolean
+    )
+
     private var effect: DynamicsProcessing? = null
     private var eqBandCount: Int = 0
     private var initialized = false
+
+    @Volatile
+    private var eqBackendInfo = EqBackendInfo(
+        requestedBandCount = REQUESTED_EQ_BANDS,
+        actualBandCount = 0,
+        frequenciesHz = emptyList(),
+        channelCount = 0,
+        isAvailable = false
+    )
+
+    fun getEqBackendInfo(): EqBackendInfo = eqBackendInfo
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -89,12 +108,15 @@ class DynamicsProcessingManager(
 
             effect = dp
             initialized = true
+            refreshEqBackendInfo(dp)
 
             Log.i(
                 TAG,
                 "DynamicsProcessing initialized: " +
-                    "session=$audioSessionId eqBands=$eqBandCount"
+                    "session=$audioSessionId eqBands=$eqBandCount " +
+                    "channels=${dp.channelCountSafe()}"
             )
+            logEqBackendMap(dp)
 
         } catch (e: Exception) {
             Log.e(
@@ -105,6 +127,60 @@ class DynamicsProcessingManager(
             )
 
             releaseInternal()
+        }
+    }
+
+    /**
+     * Reads back the configuration that the running effect actually exposes.
+     * This is intentionally separate from the requested 32 logical bands: the
+     * native backend may accept a different physical band count.
+     */
+    private fun refreshEqBackendInfo(dp: DynamicsProcessing) {
+        val actualCount = try {
+            dp.getConfig().postEqBandCount
+        } catch (_: Exception) {
+            0
+        }
+
+        val frequencies = buildList {
+            for (index in 0 until actualCount) {
+                try {
+                    add(dp.getPostEqByChannelIndex(0).getBand(index).getCutoffFrequency())
+                } catch (_: Exception) {
+                    break
+                }
+            }
+        }
+
+        eqBandCount = actualCount
+        eqBackendInfo = EqBackendInfo(
+            requestedBandCount = REQUESTED_EQ_BANDS,
+            actualBandCount = actualCount,
+            frequenciesHz = frequencies,
+            channelCount = dp.channelCountSafe(),
+            isAvailable = actualCount > 0
+        )
+    }
+
+    private fun logEqBackendMap(dp: DynamicsProcessing) {
+        val info = eqBackendInfo
+        Log.i(
+            TAG,
+            "EQ backend map: requested=${info.requestedBandCount}, " +
+                "actual=${info.actualBandCount}, channels=${info.channelCount}"
+        )
+
+        info.frequenciesHz.forEachIndexed { index, frequency ->
+            Log.i(TAG, "EQ physical band[$index] cutoff=${frequency}Hz")
+        }
+
+        if (info.actualBandCount != REQUESTED_EQ_BANDS) {
+            Log.w(
+                TAG,
+                "EQ backend exposes ${info.actualBandCount} physical bands; " +
+                    "sBz retains $REQUESTED_EQ_BANDS logical bands. " +
+                    "Logical-to-physical mapping is lossy until a PCM/software backend is available."
+            )
         }
     }
 
@@ -255,7 +331,8 @@ class DynamicsProcessingManager(
             try {
                 val postEq = dp.getPostEqByChannelIndex(channel)
                 for (nativeIndex in 0 until count) {
-                    val sourceIndex = mapEqBandIndex(nativeIndex, count, config.eqGains.size)
+                    val nativeFrequency = postEq.getBand(nativeIndex).getCutoffFrequency()
+                    val sourceIndex = nearestSourceBandIndex(nativeFrequency, config.eqGains.size)
                     val eqGain = if (config.isEnabled) config.eqGains.getOrElse(sourceIndex) { 0f } else 0f
                     val gain = (eqGain + balanceCompensationDb(channel, config.balance))
                         .coerceIn(-60f, 15f)
@@ -308,8 +385,15 @@ class DynamicsProcessingManager(
         val count = dp.getConfig().postEqBandCount
         if (count <= 0) return
 
-        val nativeIndex = mapSourceBandToNativeIndex(sourceIndex, count, config.eqGains.size)
+        val exactOneToOne =
+            count == config.eqGains.size &&
+                count == DspConfig.FREQUENCIES.size
         val frequency = DspConfig.FREQUENCIES[sourceIndex]
+        val nativeIndex = if (exactOneToOne) {
+            sourceIndex
+        } else {
+            mapSourceFrequencyToNativeIndex(frequency, count, dp)
+        }
         val eqGain = if (config.isEnabled) config.eqGains[sourceIndex].coerceIn(-15f, 15f) else 0f
 
         for (channel in 0 until dp.channelCountSafe()) {
@@ -506,19 +590,23 @@ class DynamicsProcessingManager(
                 postEq.setEnabled(config.isEnabled)
 
                 for (bandIndex in 0 until count) {
-                    val sourceIndex = mapEqBandIndex(
-                        bandIndex,
-                        count,
-                        config.eqGains.size
-                    )
-
-                    val frequency =
-                        DspConfig.FREQUENCIES[
-                            sourceIndex.coerceIn(
-                                0,
-                                DspConfig.FREQUENCIES.lastIndex
-                            )
-                        ]
+                    val band = postEq.getBand(bandIndex)
+                    val exactOneToOne =
+                        count == config.eqGains.size &&
+                            count == DspConfig.FREQUENCIES.size
+                    val sourceIndex = if (exactOneToOne) {
+                        bandIndex
+                    } else {
+                        nearestSourceBandIndex(
+                            nativeBandFrequency(bandIndex, count, band),
+                            config.eqGains.size
+                        )
+                    }
+                    val frequency = if (exactOneToOne) {
+                        DspConfig.FREQUENCIES[bandIndex]
+                    } else {
+                        nativeBandFrequency(bandIndex, count, band)
+                    }
 
                     val eqGain =
                         if (config.isEnabled) {
@@ -533,9 +621,6 @@ class DynamicsProcessingManager(
                     // This avoids a second native effect and keeps the DSP chain compact.
                     val balanceGainDb = balanceCompensationDb(channel, config.balance)
                     val gain = (eqGain + balanceGainDb).coerceIn(-60f, 15f)
-
-                    val band =
-                        postEq.getBand(bandIndex)
 
                     band.setEnabled(config.isEnabled)
 
@@ -798,32 +883,75 @@ class DynamicsProcessingManager(
             }
     }
 
-    private fun mapEqBandIndex(
+    private fun nativeBandFrequency(
         nativeIndex: Int,
         nativeCount: Int,
+        band: DynamicsProcessing.EqBand
+    ): Float {
+        return try {
+            band.getCutoffFrequency()
+        } catch (_: Exception) {
+            calculateStageFrequency(nativeIndex, nativeCount)
+        }
+    }
+
+    private fun nearestSourceBandIndex(
+        frequencyHz: Float,
         sourceCount: Int
     ): Int {
-        if (
-            nativeCount <= 1 ||
-            sourceCount <= 1
-        ) {
+        if (sourceCount <= 1) return 0
+
+        val last = minOf(sourceCount, DspConfig.FREQUENCIES.size) - 1
+        var bestIndex = 0
+        var bestDistance = Float.POSITIVE_INFINITY
+
+        for (index in 0..last) {
+            val distance = kotlin.math.abs(
+                kotlin.math.ln(
+                    (DspConfig.FREQUENCIES[index] / frequencyHz.coerceAtLeast(1f))
+                        .toDouble()
+                )
+            )
+            if (distance < bestDistance) {
+                bestDistance = distance.toFloat()
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    private fun mapSourceFrequencyToNativeIndex(
+        frequencyHz: Float,
+        nativeCount: Int,
+        dp: DynamicsProcessing
+    ): Int {
+        if (nativeCount <= 1) return 0
+
+        val postEq = try {
+            dp.getPostEqByChannelIndex(0)
+        } catch (_: Exception) {
             return 0
         }
 
-        val normalized =
-            nativeIndex.toFloat() /
-                (nativeCount - 1).toFloat()
-
-        return kotlin.math.round(
-            normalized *
-                (sourceCount - 1)
-        ).toInt()
-    }
-
-    private fun mapSourceBandToNativeIndex(sourceIndex: Int, nativeCount: Int, sourceCount: Int): Int {
-        if (nativeCount <= 1 || sourceCount <= 1) return 0
-        val normalized = sourceIndex.toFloat() / (sourceCount - 1).toFloat()
-        return kotlin.math.round(normalized * (nativeCount - 1)).toInt().coerceIn(0, nativeCount - 1)
+        var bestIndex = 0
+        var bestDistance = Float.POSITIVE_INFINITY
+        for (index in 0 until nativeCount) {
+            val nativeFrequency = try {
+                postEq.getBand(index).getCutoffFrequency()
+            } catch (_: Exception) {
+                calculateStageFrequency(index, nativeCount)
+            }
+            val distance = kotlin.math.abs(
+                kotlin.math.ln(
+                    (nativeFrequency / frequencyHz.coerceAtLeast(1f)).toDouble()
+                )
+            )
+            if (distance < bestDistance) {
+                bestDistance = distance.toFloat()
+                bestIndex = index
+            }
+        }
+        return bestIndex
     }
 
     private fun balanceCompensationDb(channel: Int, balance: Float): Float {

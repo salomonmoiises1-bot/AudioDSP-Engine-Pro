@@ -193,14 +193,6 @@ class DynamicsProcessingManager(
                 applyMasterGain(dp, config)
             }
 
-            Log.d(
-                TAG,
-                "DSP configuration applied: " +
-                    "session=$audioSessionId " +
-                    "mdrcEnabled=${config.mdrcEnabled} " +
-                    "mdrcBands=${config.mdrcBands.size}"
-            )
-
         } catch (e: Exception) {
             Log.e(
                 TAG,
@@ -526,55 +518,6 @@ class DynamicsProcessingManager(
                         nativeBand
                     )
 
-                    /*
-                     * Read back the value accepted by Android.
-                     * This detects HAL rounding/clamping.
-                     */
-                    try {
-                        val actual =
-                            dp.getMbcBandByChannelIndex(
-                                channel,
-                                bandIndex
-                            )
-
-                        val actualCutoff =
-                            actual.getCutoffFrequency()
-
-                        val difference =
-                            kotlin.math.abs(
-                                actualCutoff - cutoff
-                            )
-
-                        if (difference > 0.5f) {
-                            Log.w(
-                                TAG,
-                                "MDRC cutoff mismatch: " +
-                                    "session=$audioSessionId " +
-                                    "channel=$channel " +
-                                    "band=$bandIndex " +
-                                    "requested=${cutoff}Hz " +
-                                    "actual=${actualCutoff}Hz"
-                            )
-                        } else {
-                            Log.d(
-                                TAG,
-                                "MDRC cutoff verified: " +
-                                    "session=$audioSessionId " +
-                                    "channel=$channel " +
-                                    "band=$bandIndex " +
-                                    "cutoff=${actualCutoff}Hz"
-                            )
-                        }
-
-                    } catch (verifyError: Exception) {
-                        Log.w(
-                            TAG,
-                            "Unable to read MDRC band " +
-                                "channel=$channel " +
-                                "band=$bandIndex",
-                            verifyError
-                        )
-                    }
                 }
 
             } catch (e: Exception) {

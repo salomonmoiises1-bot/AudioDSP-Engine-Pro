@@ -4,7 +4,7 @@ import java.io.Serializable
 
 /**
  * Complete immutable configuration state for the sBz DSP Pipeline.
- * Covers Pre-Gain, Bass Boost, Tone, 32-Band EQ, MDRC, AGC, Spatial Virtualizer,
+ * Covers Pre-Gain, Bass Boost, Tone, 32-Band EQ, MDRC, automatic headroom, Spatial Virtualizer,
  * Master Gain, Balance, and Output Limiter Protection.
  */
 data class DspConfig(
@@ -42,9 +42,9 @@ data class DspConfig(
     val hallRoomHfLevelDb: Float = -4.0f,
     val hallRoomLevelDb: Float = -3.0f,
 
-    // AutoGain / AGC Control
+    // Automatic headroom compensation (kept as autoGain fields for preset compatibility)
     val autoGainEnabled: Boolean = true,
-    val autoGainTargetDb: Float = -14.0f, // Loudness target LUFS / RMS approx
+    val autoGainTargetDb: Float = -14.0f, // Legacy persisted target; no PCM loudness meter is available in the native effect path
 
     // Spatial / Virtualizer Stage
     val virtualizerEnabled: Boolean = false,

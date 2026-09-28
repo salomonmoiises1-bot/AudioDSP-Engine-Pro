@@ -60,6 +60,14 @@ class SbzDspEngine {
      */
     @Synchronized
     fun attachSession(sessionId: Int) {
+        // Session 0 is the global pipeline. If it is attached, do not add a second
+        // per-app pipeline for the same audio path: two native DSP chains would
+        // compound EQ/MDRC/limiter processing and reduce headroom.
+        if (sessionId != GLOBAL_SESSION_ID && pipelines.containsKey(GLOBAL_SESSION_ID)) {
+            Log.d(TAG, "Global DSP active; ignoring duplicate per-session attach: $sessionId")
+            return
+        }
+
         if (pipelines.containsKey(sessionId)) {
             Log.d(TAG, "Session $sessionId already attached, updating config...")
             applyConfigToSession(sessionId, currentConfig)
@@ -133,7 +141,7 @@ class SbzDspEngine {
 
     private fun applyConfigToPipeline(pipeline: SessionPipeline, config: DspConfig) {
         try {
-            // DynamicsProcessing carries EQ, MDRC, Tone, Limiter, AGC, Master Gain
+            // DynamicsProcessing carries EQ, MDRC, Tone, headroom compensation, Limiter and Master Gain
             pipeline.dynamicsProcessing.applyConfig(config)
 
             // Virtualizer

@@ -172,8 +172,16 @@ class DynamicsProcessingManager(
         try {
             dp.setEnabled(config.isEnabled)
 
+            val automaticHeadroom =
+                if (config.autoGainEnabled && config.isEnabled) {
+                    config.computeHeadroomSafeguard()
+                } else {
+                    0f
+                }
+
             dp.setInputGainAllChannelsTo(
-                config.preGainDb.coerceIn(-12f, 12f)
+                (config.preGainDb + automaticHeadroom)
+                    .coerceIn(-12f, 12f)
             )
 
             applyPreEq(dp, config)
@@ -355,7 +363,7 @@ class DynamicsProcessingManager(
                             )
                         ]
 
-                    val gain =
+                    val eqGain =
                         if (config.isEnabled) {
                             config.eqGains
                                 .getOrElse(sourceIndex) { 0f }
@@ -363,6 +371,11 @@ class DynamicsProcessingManager(
                         } else {
                             0f
                         }
+
+                    // Balance is implemented as a per-channel gain at the final EQ stage.
+                    // This avoids a second native effect and keeps the DSP chain compact.
+                    val balanceGainDb = balanceCompensationDb(channel, config.balance)
+                    val gain = (eqGain + balanceGainDb).coerceIn(-60f, 15f)
 
                     val band =
                         postEq.getBand(bandIndex)
@@ -708,6 +721,20 @@ class DynamicsProcessingManager(
         ).toInt()
     }
 
+    private fun balanceCompensationDb(channel: Int, balance: Float): Float {
+        val b = balance.coerceIn(-1f, 1f)
+        if (b == 0f) return 0f
+
+        val attenuation = 1f - kotlin.math.abs(b)
+        val db = 20f * kotlin.math.log10(attenuation.coerceAtLeast(0.001f))
+
+        return when {
+            b < 0f && channel == 1 -> db
+            b > 0f && channel == 0 -> db
+            else -> 0f
+        }
+    }
+
     private fun calculateStageFrequency(
         index: Int,
         count: Int
@@ -764,7 +791,9 @@ class DynamicsProcessingManager(
                     DynamicsProcessing.Limiter(
                         config.isEnabled,
                         config.isEnabled &&
-                            config.limiterEnabled,
+                            (config.limiterEnabled ||
+                                config.masterGainDb != 0f ||
+                                config.limiterPostGainDb != 0f),
                         0,
                         config.limiterAttackMs
                             .coerceIn(
@@ -813,7 +842,7 @@ class DynamicsProcessingManager(
         dp: DynamicsProcessing,
         config: DspConfig
     ) {
-        if (!config.limiterEnabled) return
+        if (!config.isEnabled) return
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {

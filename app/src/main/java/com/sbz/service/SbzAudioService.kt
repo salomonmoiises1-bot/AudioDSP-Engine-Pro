@@ -59,6 +59,8 @@ class SbzAudioService : Service() {
     // Never queue every intermediate fader position. Keep only the newest state.
     private val pendingConfig = AtomicReference<DspConfig?>(null)
     private val configWorkerScheduled = AtomicBoolean(false)
+    private val pendingRealtimeConfig = AtomicReference<DspConfig?>(null)
+    private val realtimeWorkerScheduled = AtomicBoolean(false)
 
     inner class LocalBinder : Binder() {
         fun getService(): SbzAudioService = this@SbzAudioService
@@ -190,6 +192,29 @@ class SbzAudioService : Service() {
         activeConfig = newConfig
         dspExecutor.execute {
             dspEngine.updateMdrcBand(newConfig, bandIndex)
+        }
+    }
+
+    fun updateRealtimeConfig(newConfig: DspConfig) {
+        activeConfig = newConfig
+        pendingRealtimeConfig.set(newConfig)
+        scheduleLatestRealtimeApply()
+        updateNotification()
+    }
+
+    private fun scheduleLatestRealtimeApply() {
+        if (!realtimeWorkerScheduled.compareAndSet(false, true)) return
+
+        dspExecutor.execute {
+            try {
+                while (true) {
+                    val config = pendingRealtimeConfig.getAndSet(null) ?: break
+                    dspEngine.updateRealtimeConfig(config)
+                }
+            } finally {
+                realtimeWorkerScheduled.set(false)
+                if (pendingRealtimeConfig.get() != null) scheduleLatestRealtimeApply()
+            }
         }
     }
 

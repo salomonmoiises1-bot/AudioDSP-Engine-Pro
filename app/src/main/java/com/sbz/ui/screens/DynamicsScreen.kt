@@ -328,7 +328,7 @@ fun DynamicsScreen(
                 ) {
                     Column {
                         Text(
-                            text = "CONTROL DE GANANCIA AUTOMÁTICA / AGC",
+                            text = "COMPENSACIÓN AUTOMÁTICA DE HEADROOM",
                             fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -336,7 +336,7 @@ fun DynamicsScreen(
                         )
 
                         Text(
-                            text = "Evita variaciones bruscas de volumen y saturación",
+                            text = "Reduce automáticamente la ganancia cuando los refuerzos del DSP consumen margen",
                             fontSize = 11.sp,
                             color = SbzTextSecondary
                         )
@@ -361,40 +361,16 @@ fun DynamicsScreen(
                     modifier = Modifier.height(12.dp)
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Nivel de volumen objetivo",
-                        fontSize = 12.sp,
-                        color = SbzTextSecondary
-                    )
+                Spacer(Modifier.height(8.dp))
 
-                    Text(
-                        text = "%.1f dB".format(
-                            config.autoGainTargetDb
-                        ),
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = SbzCyan
-                    )
-                }
-
-                Slider(
-                    value = config.autoGainTargetDb,
-                    onValueChange = {
-                        viewModel.setAutoGain(
-                            config.autoGainEnabled,
-                            it
-                        )
+                Text(
+                    text = if (config.autoGainEnabled) {
+                        "Activo: el motor reduce automáticamente la ganancia de entrada cuando los refuerzos de EQ, tono y graves consumen demasiado margen."
+                    } else {
+                        "Desactivado: la ganancia de entrada usa únicamente el Pre-Gain configurado."
                     },
-                    valueRange = -24f..-6f,
-                    enabled = config.autoGainEnabled,
-                    colors = SliderDefaults.colors(
-                        thumbColor = SbzCyan,
-                        activeTrackColor = SbzCyan
-                    )
+                    fontSize = 11.sp,
+                    color = SbzTextSecondary
                 )
             }
         }

@@ -14,7 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sbz.ui.MainViewModel
-import com.sbz.ui.components.KnobControl
+import com.sbz.ui.components.SbzFader
 import com.sbz.ui.theme.*
 
 @Composable
@@ -56,29 +56,37 @@ fun ToneScreen(
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    KnobControl(
-                        value = config.toneBassDb,
-                        range = -12f..12f,
-                        label = "Graves (Bajos)",
-                        unit = "dB",
-                        onValueChange = { viewModel.setTone(it, config.toneMidDb, config.toneTrebleDb) }
+                    SbzFader(
+                        gainDb = config.toneBassDb,
+                        frequencyHz = 100f,
+                        label = "GRAVES",
+                        minGainDb = -12f,
+                        maxGainDb = 12f,
+                        stepDb = 0.5f,
+                        onGainChanged = { viewModel.setTone(it, config.toneMidDb, config.toneTrebleDb) }
                     )
-                    KnobControl(
-                        value = config.toneMidDb,
-                        range = -12f..12f,
-                        label = "Medios (1 kHz)",
-                        unit = "dB",
-                        onValueChange = { viewModel.setTone(config.toneBassDb, it, config.toneTrebleDb) }
+                    SbzFader(
+                        gainDb = config.toneMidDb,
+                        frequencyHz = 1000f,
+                        label = "MEDIOS",
+                        minGainDb = -12f,
+                        maxGainDb = 12f,
+                        stepDb = 0.5f,
+                        onGainChanged = { viewModel.setTone(config.toneBassDb, it, config.toneTrebleDb) }
                     )
-                    KnobControl(
-                        value = config.toneTrebleDb,
-                        range = -12f..12f,
-                        label = "Agudos (Altos)",
-                        unit = "dB",
-                        onValueChange = { viewModel.setTone(config.toneBassDb, config.toneMidDb, it) }
+                    SbzFader(
+                        gainDb = config.toneTrebleDb,
+                        frequencyHz = 10000f,
+                        label = "AGUDOS",
+                        minGainDb = -12f,
+                        maxGainDb = 12f,
+                        stepDb = 0.5f,
+                        onGainChanged = { viewModel.setTone(config.toneBassDb, config.toneMidDb, it) }
                     )
                 }
             }

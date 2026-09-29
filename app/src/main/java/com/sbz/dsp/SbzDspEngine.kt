@@ -60,12 +60,16 @@ class SbzDspEngine {
      */
     @Synchronized
     fun attachSession(sessionId: Int) {
-        // Session 0 is the global pipeline. If it is attached, do not add a second
-        // per-app pipeline for the same audio path: two native DSP chains would
-        // compound EQ/MDRC/limiter processing and reduce headroom.
+        // Session 0 is only a fallback for devices where the global output-mix
+        // AudioEffect path still works. If Android gives us a real application
+        // session, that session is more precise and must take precedence.
+        //
+        // The previous implementation ignored every real session whenever the
+        // global pipeline existed. That could leave sBz attached to a non-working
+        // or deprecated session-0 path while discarding the actual app session.
         if (sessionId != GLOBAL_SESSION_ID && pipelines.containsKey(GLOBAL_SESSION_ID)) {
-            Log.d(TAG, "Global DSP active; ignoring duplicate per-session attach: $sessionId")
-            return
+            Log.i(TAG, "Real audio session $sessionId received; replacing global fallback session 0")
+            pipelines.remove(GLOBAL_SESSION_ID)?.let { releasePipeline(it, GLOBAL_SESSION_ID) }
         }
 
         if (pipelines.containsKey(sessionId)) {
@@ -109,16 +113,30 @@ class SbzDspEngine {
         }
 
         Log.i(TAG, "Detaching DSP Pipeline from AudioSession: $sessionId")
-        pipelines.remove(sessionId)?.let { pipeline ->
-            try {
-                pipeline.dynamicsProcessing.release()
-                pipeline.virtualizer.release()
-                pipeline.hallReverb.release()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
-            }
+        pipelines.remove(sessionId)?.let { releasePipeline(it, sessionId) }
+
+        // If the last real application session disappeared, restore the global
+        // fallback so sBz can still work on devices that expose session-0 output
+        // effects but do not send application-session broadcasts.
+        if (sessionId != GLOBAL_SESSION_ID &&
+            pipelines.isEmpty() &&
+            _engineState.value.isRunning
+        ) {
+            Log.i(TAG, "No real audio sessions remain; restoring global fallback session 0")
+            attachSession(GLOBAL_SESSION_ID)
         }
+
         updateState()
+    }
+
+    private fun releasePipeline(pipeline: SessionPipeline, sessionId: Int) {
+        try {
+            pipeline.dynamicsProcessing.release()
+            pipeline.virtualizer.release()
+            pipeline.hallReverb.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
+        }
     }
 
     /**

@@ -1,16 +1,14 @@
 package com.sbz.diagnostics
 
 import android.media.audiofx.AudioEffect
-import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
 import android.os.Build
 
 /**
- * Diagnostic utility for inspecting the audio effects exposed by
- * the current Android device.
+ * Diagnostic utility for inspecting audio effects exposed by the device.
  *
- * This class DOES NOT modify the sBz DSP chain.
- * It only queries platform capabilities and returns a textual report.
+ * This class does not modify the sBz DSP chain.
+ * It only queries Android audio-effect capabilities.
  */
 object AudioEffectsDiagnostics {
 
@@ -25,31 +23,39 @@ object AudioEffectsDiagnostics {
         report.appendLine()
 
         inspectAvailableEffects(report)
+
         report.appendLine()
 
         inspectEqualizer(report)
+
         report.appendLine()
 
-        inspectDynamicsProcessing(report)
-        report.appendLine()
+        inspectDynamicsProcessingAvailability(report)
 
+        report.appendLine()
         report.appendLine("========== END DIAGNOSTICS ==========")
 
         return report.toString()
     }
 
-    private fun inspectAvailableEffects(report: StringBuilder) {
+    private fun inspectAvailableEffects(
+        report: StringBuilder
+    ) {
         report.appendLine("---- Available Audio Effects ----")
 
         try {
             val descriptors = AudioEffect.queryEffects()
 
             if (descriptors == null || descriptors.isEmpty()) {
-                report.appendLine("No effect descriptors returned.")
+                report.appendLine(
+                    "No effect descriptors returned."
+                )
                 return
             }
 
-            report.appendLine("Total descriptors: ${descriptors.size}")
+            report.appendLine(
+                "Total descriptors: ${descriptors.size}"
+            )
 
             descriptors.forEachIndexed { index, descriptor ->
                 report.appendLine(
@@ -68,7 +74,9 @@ object AudioEffectsDiagnostics {
         }
     }
 
-    private fun inspectEqualizer(report: StringBuilder) {
+    private fun inspectEqualizer(
+        report: StringBuilder
+    ) {
         report.appendLine("---- Equalizer ----")
 
         var equalizer: Equalizer? = null
@@ -83,33 +91,36 @@ object AudioEffectsDiagnostics {
             val levelRange = equalizer.bandLevelRange
 
             report.appendLine("Available: true")
-            report.appendLine("Number of bands: $bands")
             report.appendLine(
-                "Level range: ${levelRange[0]} .. ${levelRange[1]} mB"
+                "Number of bands: $bands"
+            )
+
+            report.appendLine(
+                "Level range: " +
+                    "${levelRange[0]} .. ${levelRange[1]} mB"
             )
 
             for (band in 0 until bands) {
                 try {
-                    val range = equalizer.getBandFreqRange(
-                        band.toShort()
-                    )
+                    val shortBand = band.toShort()
 
-                    val center = try {
-                        equalizer.getCenterFreq(
-                            band.toShort()
-                        )
-                    } catch (_: Exception) {
-                        0
-                    }
+                    val frequencyRange =
+                        equalizer.getBandFreqRange(shortBand)
+
+                    val centerFrequency =
+                        equalizer.getCenterFreq(shortBand)
 
                     report.appendLine(
                         "Band $band: " +
-                            "${range[0]}-${range[1]} mHz, " +
-                            "center=${center} mHz"
+                            "${frequencyRange[0]}-" +
+                            "${frequencyRange[1]} mHz, " +
+                            "center=${centerFrequency} mHz"
                     )
                 } catch (e: Exception) {
                     report.appendLine(
-                        "Band $band: ERROR ${e.message}"
+                        "Band $band: ERROR " +
+                            "${e.javaClass.simpleName}: " +
+                            "${e.message}"
                     )
                 }
             }
@@ -122,12 +133,14 @@ object AudioEffectsDiagnostics {
             try {
                 equalizer?.release()
             } catch (_: Exception) {
-                // Ignore release errors during diagnostics.
+                // Ignore release errors.
             }
         }
     }
 
-    private fun inspectDynamicsProcessing(report: StringBuilder) {
+    private fun inspectDynamicsProcessingAvailability(
+        report: StringBuilder
+    ) {
         report.appendLine("---- DynamicsProcessing ----")
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
@@ -138,136 +151,39 @@ object AudioEffectsDiagnostics {
             return
         }
 
-        var dynamics: DynamicsProcessing? = null
-
         try {
-            /*
-             * Create a diagnostic DynamicsProcessing instance.
-             * This is only used to inspect the exposed configuration.
-             */
-            dynamics = DynamicsProcessing(
-                0,
-                0,
-                DynamicsProcessing.Config.Builder(
-                    0,
-                    2,
-                    true,
-                    8,
-                    false,
-                    4,
-                    false,
-                    8,
-                    false
-                ).build()
-            )
+            val descriptors = AudioEffect.queryEffects()
 
-            val config = dynamics.config
+            val dynamicsType =
+                AudioEffect.EFFECT_TYPE_DYNAMICS_PROCESSING
 
-            report.appendLine("Available: true")
+            val found = descriptors?.any {
+                it.type == dynamicsType
+            } == true
 
             report.appendLine(
-                "Input channels: ${config.inputChannelCount}"
+                "Descriptor available: $found"
             )
 
-            report.appendLine(
-                "Pre-EQ enabled: ${config.isPreEqInUse}"
-            )
-
-            if (config.isPreEqInUse) {
-                val preEq = config.preEq
-
-                report.appendLine(
-                    "Pre-EQ bands: ${preEq.bandCount}"
-                )
-
-                for (i in 0 until preEq.bandCount) {
-                    try {
-                        val band = preEq.getBand(i)
-
+            if (found) {
+                descriptors
+                    ?.filter {
+                        it.type == dynamicsType
+                    }
+                    ?.forEach { descriptor ->
                         report.appendLine(
-                            "Pre-EQ band $i: " +
-                                "frequency=${band.frequency} Hz, " +
-                                "gain=${band.gain} dB"
-                        )
-                    } catch (e: Exception) {
-                        report.appendLine(
-                            "Pre-EQ band $i: ERROR ${e.message}"
+                            "DynamicsProcessing: " +
+                                "name=${descriptor.name}, " +
+                                "uuid=${descriptor.uuid}, " +
+                                "connect=${descriptor.connectMode}"
                         )
                     }
-                }
             }
-
-            report.appendLine(
-                "MBC enabled: ${config.isMbcInUse}"
-            )
-
-            if (config.isMbcInUse) {
-                val mbc = config.mbc
-
-                report.appendLine(
-                    "MBC bands: ${mbc.bandCount}"
-                )
-
-                for (i in 0 until mbc.bandCount) {
-                    try {
-                        val band = mbc.getBand(i)
-
-                        report.appendLine(
-                            "MBC band $i: " +
-                                "cutoff=${band.cutoffFrequency} Hz, " +
-                                "threshold=${band.threshold} dB, " +
-                                "ratio=${band.ratio}"
-                        )
-                    } catch (e: Exception) {
-                        report.appendLine(
-                            "MBC band $i: ERROR ${e.message}"
-                        )
-                    }
-                }
-            }
-
-            report.appendLine(
-                "Post-EQ enabled: ${config.isPostEqInUse}"
-            )
-
-            if (config.isPostEqInUse) {
-                val postEq = config.postEq
-
-                report.appendLine(
-                    "Post-EQ bands: ${postEq.bandCount}"
-                )
-
-                for (i in 0 until postEq.bandCount) {
-                    try {
-                        val band = postEq.getBand(i)
-
-                        report.appendLine(
-                            "Post-EQ band $i: " +
-                                "frequency=${band.frequency} Hz, " +
-                                "gain=${band.gain} dB"
-                        )
-                    } catch (e: Exception) {
-                        report.appendLine(
-                            "Post-EQ band $i: ERROR ${e.message}"
-                        )
-                    }
-                }
-            }
-
-            report.appendLine(
-                "Limiter enabled: ${config.isLimiterInUse}"
-            )
         } catch (e: Exception) {
-            report.appendLine("Available: false")
             report.appendLine(
-                "ERROR: ${e.javaClass.simpleName}: ${e.message}"
+                "ERROR: ${e.javaClass.simpleName}: " +
+                    "${e.message}"
             )
-        } finally {
-            try {
-                dynamics?.release()
-            } catch (_: Exception) {
-                // Ignore release errors during diagnostics.
-            }
         }
     }
 }

@@ -142,10 +142,10 @@ object AudioEffectsDiagnostics {
     ) {
         report.appendLine("---- DynamicsProcessing ----")
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             report.appendLine("Available: false")
             report.appendLine(
-                "Requires Android 7.0 / API 24+."
+                "Requires Android 9.0 / API 28+."
             )
             return
         }
@@ -190,9 +190,22 @@ object AudioEffectsDiagnostics {
              * It exists only so Android can expose the actual
              * DynamicsProcessing configuration accepted by the
              * device/effect implementation.
+             *
+             * Constructor order:
+             *
+             * variant,
+             * channelCount,
+             * preEqInUse,
+             * preEqBandCount,
+             * mbcInUse,
+             * mbcBandCount,
+             * postEqInUse,
+             * postEqBandCount,
+             * limiterInUse
              */
             val config =
                 DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     2,
                     true,
                     5,
@@ -213,12 +226,24 @@ object AudioEffectsDiagnostics {
             val actualConfig =
                 dynamicsProcessing.config
 
+            val channelCount =
+                dynamicsProcessing.channelCount
+
             report.appendLine()
             report.appendLine("### DynamicsProcessing CONFIG ###")
 
             report.appendLine(
-                "Channel count: " +
-                    actualConfig.channelCount
+                "Channel count: $channelCount"
+            )
+
+            report.appendLine(
+                "Variant: " +
+                    actualConfig.variant
+            )
+
+            report.appendLine(
+                "Preferred frame duration: " +
+                    "${actualConfig.preferredFrameDuration} ms"
             )
 
             report.appendLine(
@@ -260,7 +285,7 @@ object AudioEffectsDiagnostics {
              * Inspect every channel.
              */
             for (
-                channelIndex in 0 until actualConfig.channelCount
+                channelIndex in 0 until channelCount
             ) {
                 report.appendLine()
                 report.appendLine(
@@ -303,8 +328,7 @@ object AudioEffectsDiagnostics {
         } catch (e: Exception) {
             report.appendLine(
                 "DynamicsProcessing ERROR: " +
-                    "${e.javaClass.simpleName}: " +
-                    "${e.message}"
+                    "${e.javaClass.simpleName}: ${e.message}"
             )
         } finally {
             try {

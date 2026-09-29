@@ -1,6 +1,7 @@
 package com.sbz.dsp
 
 import android.media.audiofx.DynamicsProcessing
+import android.media.audiofx.Equalizer
 import android.os.Build
 import android.util.Log
 import com.sbz.dsp.model.DspConfig
@@ -29,6 +30,8 @@ class DynamicsProcessingManager(
         private const val TAG = "DynamicsProcessingMgr"
 
         private const val PRIORITY = 100
+        private const val NATIVE_EQ_PRIORITY = 110
+        private const val NATIVE_EQ_MIN_BANDS = 32
         private const val CHANNEL_COUNT = 2
 
         private const val REQUESTED_EQ_BANDS = 32
@@ -58,6 +61,8 @@ class DynamicsProcessingManager(
     )
 
     private var effect: DynamicsProcessing? = null
+    private var nativeEqualizer: Equalizer? = null
+    private var nativeEqMap: IntArray = IntArray(0)
     private var eqBandCount: Int = 0
     private var initialized = false
 
@@ -109,6 +114,7 @@ class DynamicsProcessingManager(
             effect = dp
             initialized = true
             refreshEqBackendInfo(dp)
+            initializeNativeEqualizer()
 
             Log.i(
                 TAG,
@@ -129,6 +135,118 @@ class DynamicsProcessingManager(
             releaseInternal()
         }
     }
+
+    /**
+     * Some vendor devices expose a richer legacy Equalizer effect than
+     * DynamicsProcessing. If it exposes at least 32 bands, use it as the
+     * graphic-EQ stage and leave DynamicsProcessing responsible for the
+     * remaining DSP stages. This is particularly important on devices where
+     * the vendor audio stack exposes 32+ physical EQ bands.
+     */
+    private fun initializeNativeEqualizer() {
+        try {
+            val eq = Equalizer(NATIVE_EQ_PRIORITY, audioSessionId)
+            val bandCount = eq.numberOfBands.toInt()
+            val range = eq.bandLevelRange
+
+            if (bandCount >= NATIVE_EQ_MIN_BANDS && range.size >= 2) {
+                nativeEqualizer = eq
+                nativeEqMap = buildNativeEqMap(eq, DspConfig.FREQUENCIES)
+                Log.i(
+                    TAG,
+                    "Native Equalizer available: session=$audioSessionId " +
+                        "bands=$bandCount levelRange=${range[0]}..${range[1]}mB"
+                )
+                nativeEqMap.forEachIndexed { logical, physical ->
+                    Log.i(
+                        TAG,
+                        "Native EQ map logical[$logical]=${DspConfig.FREQUENCIES[logical]}Hz -> physical[$physical]=" +
+                            "${eq.getCenterFreq(physical.toShort()) / 1000f}Hz"
+                    )
+                }
+            } else {
+                Log.i(
+                    TAG,
+                    "Native Equalizer present but not selected: bands=$bandCount"
+                )
+                eq.release()
+            }
+        } catch (e: Exception) {
+            Log.i(
+                TAG,
+                "Native Equalizer unavailable for session=$audioSessionId: ${e.message}"
+            )
+            nativeEqualizer = null
+            nativeEqMap = IntArray(0)
+        }
+    }
+
+    private fun buildNativeEqMap(
+        eq: Equalizer,
+        targetsHz: FloatArray
+    ): IntArray {
+        val count = eq.numberOfBands.toInt()
+        val used = BooleanArray(count)
+        return IntArray(targetsHz.size) { targetIndex ->
+            var best = -1
+            var bestDistance = Double.POSITIVE_INFINITY
+
+            for (physical in 0 until count) {
+                if (used[physical]) continue
+                val centerHz = eq.getCenterFreq(physical.toShort()) / 1000.0
+                val targetHz = targetsHz[targetIndex].toDouble()
+                val distance = kotlin.math.abs(
+                    kotlin.math.ln(
+                        (centerHz / targetHz.coerceAtLeast(1.0))
+                    )
+                )
+                if (distance < bestDistance) {
+                    bestDistance = distance
+                    best = physical
+                }
+            }
+
+            if (best < 0) {
+                best = 0
+            }
+            used[best] = true
+            best
+        }
+    }
+
+    private fun applyNativeGraphicEq(config: DspConfig) {
+        val eq = nativeEqualizer ?: return
+        if (nativeEqMap.size != DspConfig.FREQUENCIES.size) return
+
+        try {
+            val range = eq.bandLevelRange
+            val minMb = range[0].toInt()
+            val maxMb = range[1].toInt()
+
+            for (logicalIndex in DspConfig.FREQUENCIES.indices) {
+                val physicalIndex = nativeEqMap[logicalIndex]
+                val gainDb = if (config.isEnabled) {
+                    config.eqGains.getOrElse(logicalIndex) { 0f }
+                } else {
+                    0f
+                }
+                val millibels = (gainDb * 100f)
+                    .toInt()
+                    .coerceIn(minMb, maxMb)
+                    .toShort()
+                eq.setBandLevel(physicalIndex.toShort(), millibels)
+            }
+
+            if (eq.enabled != config.isEnabled) {
+                eq.enabled = config.isEnabled
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to apply native graphic EQ on session=$audioSessionId", e)
+        }
+    }
+
+    private fun hasNativeGraphicEq(): Boolean =
+        nativeEqualizer != null && nativeEqMap.size == DspConfig.FREQUENCIES.size
 
     /**
      * Reads back the configuration that the running effect actually exposes.
@@ -382,6 +500,12 @@ class DynamicsProcessingManager(
         if (!initialized || effect == null) initialize()
         val dp = effect ?: return
         if (sourceIndex !in config.eqGains.indices) return
+
+        if (hasNativeGraphicEq()) {
+            applyNativeGraphicEq(config)
+            return
+        }
+
         val count = dp.getConfig().postEqBandCount
         if (count <= 0) return
 
@@ -578,6 +702,27 @@ class DynamicsProcessingManager(
         dp: DynamicsProcessing,
         config: DspConfig
     ) {
+        if (hasNativeGraphicEq()) {
+            // The vendor Equalizer is the active 32+ band graphic EQ.
+            // Keep DynamicsProcessing Post-EQ bypassed to avoid double EQ.
+            for (channel in 0 until dp.channelCountSafe()) {
+                try {
+                    val postEq = dp.getPostEqByChannelIndex(channel)
+                    postEq.setEnabled(false)
+                    for (bandIndex in 0 until postEq.bandCount) {
+                        val band = postEq.getBand(bandIndex)
+                        band.setEnabled(false)
+                        band.setGain(0f)
+                    }
+                    dp.setPostEqByChannelIndex(channel, postEq)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Unable to bypass DynamicsProcessing Post-EQ", e)
+                }
+            }
+            applyNativeGraphicEq(config)
+            return
+        }
+
         val count = dp.getConfig().postEqBandCount
 
         if (count <= 0) return
@@ -1152,6 +1297,19 @@ class DynamicsProcessingManager(
     }
 
     private fun releaseInternal() {
+        try {
+            nativeEqualizer?.setEnabled(false)
+        } catch (_: Exception) {
+        }
+
+        try {
+            nativeEqualizer?.release()
+        } catch (_: Exception) {
+        }
+
+        nativeEqualizer = null
+        nativeEqMap = IntArray(0)
+
         try {
             effect?.setEnabled(false)
         } catch (_: Exception) {

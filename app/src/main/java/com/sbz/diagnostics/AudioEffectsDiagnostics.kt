@@ -1,18 +1,16 @@
 package com.sbz.diagnostics
 
 import android.media.audiofx.AudioEffect
-import android.media.audiofx.BassBoost
 import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
-import android.media.audiofx.Virtualizer
 import android.os.Build
 
 /**
- * Diagnostic utility for inspecting the audio effects exposed by the
- * current Android device.
+ * Diagnostic utility for inspecting the audio effects exposed by
+ * the current Android device.
  *
- * This class DOES NOT modify the audio chain.
- * It only queries the platform and returns a textual report.
+ * This class DOES NOT modify the sBz DSP chain.
+ * It only queries platform capabilities and returns a textual report.
  */
 object AudioEffectsDiagnostics {
 
@@ -92,10 +90,14 @@ object AudioEffectsDiagnostics {
 
             for (band in 0 until bands) {
                 try {
-                    val range = equalizer.getBandFreqRange(band.toShort())
+                    val range = equalizer.getBandFreqRange(
+                        band.toShort()
+                    )
 
                     val center = try {
-                        equalizer.getCenterFreq(band.toShort())
+                        equalizer.getCenterFreq(
+                            band.toShort()
+                        )
                     } catch (_: Exception) {
                         0
                     }
@@ -112,9 +114,7 @@ object AudioEffectsDiagnostics {
                 }
             }
         } catch (e: Exception) {
-            report.appendLine(
-                "Available: false"
-            )
+            report.appendLine("Available: false")
             report.appendLine(
                 "ERROR: ${e.javaClass.simpleName}: ${e.message}"
             )
@@ -132,7 +132,9 @@ object AudioEffectsDiagnostics {
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             report.appendLine("Available: false")
-            report.appendLine("Requires Android 7.0 / API 24+.")
+            report.appendLine(
+                "Requires Android 7.0 / API 24+."
+            )
             return
         }
 
@@ -140,10 +142,8 @@ object AudioEffectsDiagnostics {
 
         try {
             /*
-             * Create a diagnostic instance using the global audio session.
-             *
-             * We are only reading its configuration here.
-             * No user DSP settings are changed by this diagnostic.
+             * Create a diagnostic DynamicsProcessing instance.
+             * This is only used to inspect the exposed configuration.
              */
             dynamics = DynamicsProcessing(
                 0,
@@ -164,6 +164,7 @@ object AudioEffectsDiagnostics {
             val config = dynamics.config
 
             report.appendLine("Available: true")
+
             report.appendLine(
                 "Input channels: ${config.inputChannelCount}"
             )
@@ -270,106 +271,3 @@ object AudioEffectsDiagnostics {
         }
     }
 }
-
-2. Reemplazar temporalmente "MainActivity.kt"
-
-Mantengo todo lo que ya tenías y agrego solamente la ejecución del diagnóstico. El resultado aparecerá en Logcat con la etiqueta "sBz-AUDIO-DIAGNOSTICS"; no modifica tu interfaz ni el DSP.
-
-:::writing{variant="document" id="74106" title="MainActivity.kt"}
-
-package com.sbz
-
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import android.os.Bundle
-import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
-import androidx.core.content.ContextCompat
-import com.sbz.diagnostics.AudioEffectsDiagnostics
-import com.sbz.ui.MainViewModel
-import com.sbz.ui.SbzApp
-import com.sbz.ui.theme.SbzTheme
-
-/**
- * Main Activity hosting the Jetpack Compose sBz User Interface.
- */
-class MainActivity : ComponentActivity() {
-
-    private val viewModel: MainViewModel by viewModels()
-
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        // Notification permission handled
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // Request notification permission on Android 13 (API 33)+ for DSP Foreground Service
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            }
-        }
-
-        // Temporary device audio-effects diagnostic.
-        // This only queries Android capabilities and does not alter DSP.
-        runAudioEffectsDiagnostics()
-
-        setContent {
-            SbzTheme {
-                SbzApp(viewModel = viewModel)
-            }
-        }
-    }
-
-    private fun runAudioEffectsDiagnostics() {
-        Thread {
-            try {
-                val report = AudioEffectsDiagnostics.run()
-
-                Log.i(
-                    "sBz-AUDIO-DIAGNOSTICS",
-                    "\n$report"
-                )
-            } catch (e: Exception) {
-                Log.e(
-                    "sBz-AUDIO-DIAGNOSTICS",
-                    "Diagnostic failed",
-                    e
-                )
-            }
-        }.start()
-    }
-
-    override fun onResume() {
-        super.onResume()
-
-        // Re-verify effect control upon resuming into view
-        viewModel.reclaimDspControl()
-    }
-}
-
-Qué hacemos después de compilar
-
-No vamos a interpretar nada todavía.
-
-Instalás esta versión y necesitamos el resultado de Logcat correspondiente a:
-
-sBz-AUDIO-DIAGNOSTICS
-
-Con eso podremos saber qué expone tu dispositivo concreto y decidir la siguiente modificación del motor.
-
-Importante: esta prueba no conecta todavía "ConstantQGraphicEq"; solamente obtiene el mapa real de efectos del dispositivo.

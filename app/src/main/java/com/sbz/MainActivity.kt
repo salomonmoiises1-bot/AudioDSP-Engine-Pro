@@ -4,11 +4,13 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import com.sbz.diagnostics.AudioEffectsDiagnostics
 import com.sbz.ui.MainViewModel
 import com.sbz.ui.SbzApp
 import com.sbz.ui.theme.SbzTheme
@@ -31,12 +33,21 @@ class MainActivity : ComponentActivity() {
 
         // Request notification permission on Android 13 (API 33)+ for DSP Foreground Service
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
+            if (
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
             ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                notificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
             }
         }
+
+        // Temporary device audio-effects diagnostic.
+        // This only queries Android capabilities and does not alter DSP.
+        runAudioEffectsDiagnostics()
 
         setContent {
             SbzTheme {
@@ -45,8 +56,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun runAudioEffectsDiagnostics() {
+        Thread {
+            try {
+                val report = AudioEffectsDiagnostics.run()
+
+                Log.i(
+                    "sBz-AUDIO-DIAGNOSTICS",
+                    "\n$report"
+                )
+            } catch (e: Exception) {
+                Log.e(
+                    "sBz-AUDIO-DIAGNOSTICS",
+                    "Diagnostic failed",
+                    e
+                )
+            }
+        }.start()
+    }
+
     override fun onResume() {
         super.onResume()
+
         // Re-verify effect control upon resuming into view
         viewModel.reclaimDspControl()
     }

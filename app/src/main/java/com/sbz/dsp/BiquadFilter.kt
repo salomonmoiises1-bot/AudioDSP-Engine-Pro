@@ -105,6 +105,54 @@ class BiquadFilter(
         a0 = 1.0
     }
 
+    /** Last processed stereo sample. Valid immediately after processStereo(). */
+    var lastOutputLeft: Double = 0.0
+        private set
+    var lastOutputRight: Double = 0.0
+        private set
+
+    /**
+     * Process one stereo sample through the current biquad.
+     *
+     * The implementation is Direct Form II Transposed. It deliberately uses
+     * mutable output fields instead of returning Pair so the real-time loop
+     * allocates no object per sample.
+     */
+    fun processStereo(left: Double, right: Double) {
+        val outL = b0 * left + x1L
+        val outR = b0 * right + x1R
+
+        x1L = b1 * left - a1 * outL + x2L
+        x2L = b2 * left - a2 * outL
+        x1R = b1 * right - a1 * outR + x2R
+        x2R = b2 * right - a2 * outR
+
+        lastOutputLeft = outL
+        lastOutputRight = outR
+    }
+
+    /**
+     * Process an interleaved stereo PCM float buffer in-place.
+     * Samples are [L, R, L, R, ...].
+     */
+    fun processInterleavedStereo(buffer: FloatArray, offset: Int = 0, length: Int = buffer.size - offset) {
+        require(offset >= 0 && length >= 0 && offset + length <= buffer.size) {
+            "Invalid PCM buffer range"
+        }
+        require(length % 2 == 0) { "Stereo interleaved buffer length must be even" }
+
+        var i = offset
+        val end = offset + length
+        while (i < end) {
+            val left = buffer[i].toDouble()
+            val right = buffer[i + 1].toDouble()
+            processStereo(left, right)
+            buffer[i] = lastOutputLeft.toFloat()
+            buffer[i + 1] = lastOutputRight.toFloat()
+            i += 2
+        }
+    }
+
     /**
      * Reset filter internal states to avoid DC thumps or clicks.
      */

@@ -1,6 +1,7 @@
 package com.sbz.diagnostics
 
 import android.media.audiofx.AudioEffect
+import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
 import android.os.Build
 
@@ -30,7 +31,7 @@ object AudioEffectsDiagnostics {
 
         report.appendLine()
 
-        inspectDynamicsProcessingAvailability(report)
+        inspectDynamicsProcessing(report)
 
         report.appendLine()
         report.appendLine("========== END DIAGNOSTICS ==========")
@@ -47,9 +48,7 @@ object AudioEffectsDiagnostics {
             val descriptors = AudioEffect.queryEffects()
 
             if (descriptors == null || descriptors.isEmpty()) {
-                report.appendLine(
-                    "No effect descriptors returned."
-                )
+                report.appendLine("No effect descriptors returned.")
                 return
             }
 
@@ -138,7 +137,7 @@ object AudioEffectsDiagnostics {
         }
     }
 
-    private fun inspectDynamicsProcessingAvailability(
+    private fun inspectDynamicsProcessing(
         report: StringBuilder
     ) {
         report.appendLine("---- DynamicsProcessing ----")
@@ -150,6 +149,8 @@ object AudioEffectsDiagnostics {
             )
             return
         }
+
+        var dynamicsProcessing: DynamicsProcessing? = null
 
         try {
             val descriptors = AudioEffect.queryEffects()
@@ -165,23 +166,311 @@ object AudioEffectsDiagnostics {
                 "Descriptor available: $found"
             )
 
-            if (found) {
-                descriptors
-                    ?.filter {
-                        it.type == dynamicsType
-                    }
-                    ?.forEach { descriptor ->
-                        report.appendLine(
-                            "DynamicsProcessing: " +
-                                "name=${descriptor.name}, " +
-                                "uuid=${descriptor.uuid}, " +
-                                "connect=${descriptor.connectMode}"
+            if (!found) {
+                return
+            }
+
+            descriptors
+                ?.filter {
+                    it.type == dynamicsType
+                }
+                ?.forEach { descriptor ->
+                    report.appendLine(
+                        "Descriptor: " +
+                            "name=${descriptor.name}, " +
+                            "uuid=${descriptor.uuid}, " +
+                            "connect=${descriptor.connectMode}"
+                    )
+                }
+
+            /*
+             * Temporary diagnostic configuration.
+             *
+             * This is NOT connected to the sBz audio chain.
+             * It exists only so Android can expose the actual
+             * DynamicsProcessing configuration accepted by the
+             * device/effect implementation.
+             */
+            val config =
+                DynamicsProcessing.Config.Builder(
+                    2,
+                    true,
+                    5,
+                    true,
+                    4,
+                    true,
+                    5,
+                    true
+                ).build()
+
+            dynamicsProcessing =
+                DynamicsProcessing(
+                    100,
+                    0,
+                    config
+                )
+
+            val actualConfig =
+                dynamicsProcessing.config
+
+            report.appendLine()
+            report.appendLine("### DynamicsProcessing CONFIG ###")
+
+            report.appendLine(
+                "Channel count: " +
+                    actualConfig.channelCount
+            )
+
+            report.appendLine(
+                "Pre-EQ in use: " +
+                    actualConfig.isPreEqInUse
+            )
+
+            report.appendLine(
+                "Pre-EQ band count: " +
+                    actualConfig.preEqBandCount
+            )
+
+            report.appendLine(
+                "MBC in use: " +
+                    actualConfig.isMbcInUse
+            )
+
+            report.appendLine(
+                "MBC band count: " +
+                    actualConfig.mbcBandCount
+            )
+
+            report.appendLine(
+                "Post-EQ in use: " +
+                    actualConfig.isPostEqInUse
+            )
+
+            report.appendLine(
+                "Post-EQ band count: " +
+                    actualConfig.postEqBandCount
+            )
+
+            report.appendLine(
+                "Limiter in use: " +
+                    actualConfig.isLimiterInUse
+            )
+
+            /*
+             * Inspect every channel.
+             */
+            for (
+                channelIndex in 0 until actualConfig.channelCount
+            ) {
+                report.appendLine()
+                report.appendLine(
+                    "### CHANNEL $channelIndex ###"
+                )
+
+                try {
+                    val channel =
+                        actualConfig.getChannelByChannelIndex(
+                            channelIndex
                         )
-                    }
+
+                    inspectPreEq(
+                        report,
+                        channel
+                    )
+
+                    inspectMbc(
+                        report,
+                        channel
+                    )
+
+                    inspectPostEq(
+                        report,
+                        channel
+                    )
+
+                    inspectLimiter(
+                        report,
+                        channel
+                    )
+                } catch (e: Exception) {
+                    report.appendLine(
+                        "Channel ERROR: " +
+                            "${e.javaClass.simpleName}: " +
+                            "${e.message}"
+                    )
+                }
             }
         } catch (e: Exception) {
             report.appendLine(
-                "ERROR: ${e.javaClass.simpleName}: " +
+                "DynamicsProcessing ERROR: " +
+                    "${e.javaClass.simpleName}: " +
+                    "${e.message}"
+            )
+        } finally {
+            try {
+                dynamicsProcessing?.release()
+            } catch (_: Exception) {
+                // Ignore release errors.
+            }
+        }
+    }
+
+    private fun inspectPreEq(
+        report: StringBuilder,
+        channel: DynamicsProcessing.Channel
+    ) {
+        report.appendLine()
+        report.appendLine("--- PRE-EQ ---")
+
+        try {
+            val eq = channel.preEq
+
+            report.appendLine(
+                "Bands: ${eq.bandCount}"
+            )
+
+            for (bandIndex in 0 until eq.bandCount) {
+                try {
+                    val band =
+                        eq.getBand(bandIndex)
+
+                    report.appendLine(
+                        "Band $bandIndex: " +
+                            "enabled=${band.isEnabled}, " +
+                            "cutoff=${band.cutoffFrequency} Hz, " +
+                            "gain=${band.gain} dB"
+                    )
+                } catch (e: Exception) {
+                    report.appendLine(
+                        "Band $bandIndex ERROR: " +
+                            "${e.javaClass.simpleName}: " +
+                            "${e.message}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            report.appendLine(
+                "PRE-EQ ERROR: " +
+                    "${e.javaClass.simpleName}: " +
+                    "${e.message}"
+            )
+        }
+    }
+
+    private fun inspectMbc(
+        report: StringBuilder,
+        channel: DynamicsProcessing.Channel
+    ) {
+        report.appendLine()
+        report.appendLine("--- MBC ---")
+
+        try {
+            val mbc = channel.mbc
+
+            report.appendLine(
+                "Bands: ${mbc.bandCount}"
+            )
+
+            for (bandIndex in 0 until mbc.bandCount) {
+                try {
+                    val band =
+                        mbc.getBand(bandIndex)
+
+                    report.appendLine(
+                        "Band $bandIndex: " +
+                            "enabled=${band.isEnabled}, " +
+                            "cutoff=${band.cutoffFrequency} Hz, " +
+                            "attack=${band.attackTime} ms, " +
+                            "release=${band.releaseTime} ms, " +
+                            "ratio=${band.ratio}, " +
+                            "threshold=${band.threshold} dB, " +
+                            "knee=${band.kneeWidth} dB, " +
+                            "noiseGate=${band.noiseGateThreshold} dB, " +
+                            "expanderRatio=${band.expanderRatio}, " +
+                            "preGain=${band.preGain} dB, " +
+                            "postGain=${band.postGain} dB"
+                    )
+                } catch (e: Exception) {
+                    report.appendLine(
+                        "Band $bandIndex ERROR: " +
+                            "${e.javaClass.simpleName}: " +
+                            "${e.message}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            report.appendLine(
+                "MBC ERROR: " +
+                    "${e.javaClass.simpleName}: " +
+                    "${e.message}"
+            )
+        }
+    }
+
+    private fun inspectPostEq(
+        report: StringBuilder,
+        channel: DynamicsProcessing.Channel
+    ) {
+        report.appendLine()
+        report.appendLine("--- POST-EQ ---")
+
+        try {
+            val eq = channel.postEq
+
+            report.appendLine(
+                "Bands: ${eq.bandCount}"
+            )
+
+            for (bandIndex in 0 until eq.bandCount) {
+                try {
+                    val band =
+                        eq.getBand(bandIndex)
+
+                    report.appendLine(
+                        "Band $bandIndex: " +
+                            "enabled=${band.isEnabled}, " +
+                            "cutoff=${band.cutoffFrequency} Hz, " +
+                            "gain=${band.gain} dB"
+                    )
+                } catch (e: Exception) {
+                    report.appendLine(
+                        "Band $bandIndex ERROR: " +
+                            "${e.javaClass.simpleName}: " +
+                            "${e.message}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            report.appendLine(
+                "POST-EQ ERROR: " +
+                    "${e.javaClass.simpleName}: " +
+                    "${e.message}"
+            )
+        }
+    }
+
+    private fun inspectLimiter(
+        report: StringBuilder,
+        channel: DynamicsProcessing.Channel
+    ) {
+        report.appendLine()
+        report.appendLine("--- LIMITER ---")
+
+        try {
+            val limiter = channel.limiter
+
+            report.appendLine(
+                "enabled=${limiter.isEnabled}, " +
+                    "attack=${limiter.attackTime} ms, " +
+                    "release=${limiter.releaseTime} ms, " +
+                    "ratio=${limiter.ratio}, " +
+                    "threshold=${limiter.threshold} dB, " +
+                    "postGain=${limiter.postGain} dB"
+            )
+        } catch (e: Exception) {
+            report.appendLine(
+                "LIMITER ERROR: " +
+                    "${e.javaClass.simpleName}: " +
                     "${e.message}"
             )
         }

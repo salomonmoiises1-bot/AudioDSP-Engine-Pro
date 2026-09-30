@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Sbz" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/sbz_primary</item>
-        <item name="colorSurface">@color/sbz_surface</item>
-        <item name="colorSurfaceVariant">@color/sbz_surface_variant</item>
-        <item name="colorOnSurface">@color/sbz_text_primary</item>
-        <item name="android:windowBackground">@color/sbz_background</item>
-        <item name="android:statusBarColor">@color/sbz_background</item>
-        <item name="android:navigationBarColor">@color/sbz_background</item>
+    <style name="Theme.Sbz" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0C0F12</item>
+        <item name="android:navigationBarColor">#0C0F12</item>
+        <item name="android:windowBackground">#0C0F12</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

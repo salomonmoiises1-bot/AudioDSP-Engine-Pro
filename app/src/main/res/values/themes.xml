@@ -1,28 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- TEMA PRINCIPAL GUNMETAL 2 -->
     <style name="Theme.Sbz" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Colores base -->
         <item name="colorPrimary">@color/sbz_primary</item>
-        <item name="colorOnPrimary">@color/sbz_background</item>
-        <item name="colorPrimaryContainer">@color/sbz_primary_container</item>
-
-        <item name="colorSecondary">@color/sbz_steel_light</item>
         <item name="colorSurface">@color/sbz_surface</item>
-        <item name="colorOnSurface">@color/sbz_text_primary</item>
         <item name="colorSurfaceVariant">@color/sbz_surface_variant</item>
-        <item name="colorOnSurfaceVariant">@color/sbz_text_secondary</item>
-
-        <!-- Fondo general -->
+        <item name="colorOnSurface">@color/sbz_text_primary</item>
         <item name="android:windowBackground">@color/sbz_background</item>
         <item name="android:statusBarColor">@color/sbz_background</item>
         <item name="android:navigationBarColor">@color/sbz_background</item>
         <item name="android:windowLightStatusBar">false</item>
-
-        <!-- Sliders y controles -->
-        <item name="colorAccent">@color/sbz_accent_amber</item>
-        <item name="sliderActiveTrackColor">@color/sbz_primary</item>
-        <item name="sliderInactiveTrackColor">@color/sbz_steel_border</item>
-        <item name="sliderThumbColor">@color/sbz_primary</item>
     </style>
 </resources>

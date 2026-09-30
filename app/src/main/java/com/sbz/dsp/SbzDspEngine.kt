@@ -22,6 +22,7 @@ class SbzDspEngine {
         val dynamicsProcessing: DynamicsProcessingManager,
         val virtualizer: VirtualizerManager,
         val hallReverb: HallReverbManager,
+        val pureEqEngine: PureMultiBandEqEngine // Motor puro de 32 bandas integrado
     )
 
     private val pipelines = ConcurrentHashMap<Int, SessionPipeline>()
@@ -47,7 +48,6 @@ class SbzDspEngine {
         Log.i(TAG, "Starting sBz DSP Engine...")
         // Try attaching to Global Session 0
         attachSession(GLOBAL_SESSION_ID)
-
         _engineState.value = _engineState.value.copy(
             isRunning = true,
             globalSessionAttached = pipelines.containsKey(GLOBAL_SESSION_ID),
@@ -60,13 +60,6 @@ class SbzDspEngine {
      */
     @Synchronized
     fun attachSession(sessionId: Int) {
-        // Session 0 is only a fallback for devices where the global output-mix
-        // AudioEffect path still works. If Android gives us a real application
-        // session, that session is more precise and must take precedence.
-        //
-        // The previous implementation ignored every real session whenever the
-        // global pipeline existed. That could leave sBz attached to a non-working
-        // or deprecated session-0 path while discarding the actual app session.
         if (sessionId != GLOBAL_SESSION_ID && pipelines.containsKey(GLOBAL_SESSION_ID)) {
             Log.i(TAG, "Real audio session $sessionId received; replacing global fallback session 0")
             pipelines.remove(GLOBAL_SESSION_ID)?.let { releasePipeline(it, GLOBAL_SESSION_ID) }
@@ -86,12 +79,13 @@ class SbzDspEngine {
             }
             val virtManager = VirtualizerManager(sessionId)
             val hallManager = HallReverbManager(sessionId)
-            val pipeline = SessionPipeline(dpManager, virtManager, hallManager)
+            val pureEqManager = PureMultiBandEqEngine(sessionId, totalBands = 32) // Inicialización del motor de 32 bandas
+
+            val pipeline = SessionPipeline(dpManager, virtManager, hallManager, pureEqManager)
             pipelines[sessionId] = pipeline
 
             // Apply current config to this newly attached session
             applyConfigToPipeline(pipeline, currentConfig)
-
             updateState()
         } catch (e: Exception) {
             Log.e(TAG, "Failed attaching audio session $sessionId: ${e.message}", e)
@@ -106,26 +100,17 @@ class SbzDspEngine {
      */
     @Synchronized
     fun detachSession(sessionId: Int) {
-        // Never detach global session unless stopping the whole engine
         if (sessionId == GLOBAL_SESSION_ID && _engineState.value.isRunning) {
             Log.d(TAG, "Ignoring detach on Global Session 0 while engine is running")
             return
         }
-
         Log.i(TAG, "Detaching DSP Pipeline from AudioSession: $sessionId")
         pipelines.remove(sessionId)?.let { releasePipeline(it, sessionId) }
 
-        // If the last real application session disappeared, restore the global
-        // fallback so sBz can still work on devices that expose session-0 output
-        // effects but do not send application-session broadcasts.
-        if (sessionId != GLOBAL_SESSION_ID &&
-            pipelines.isEmpty() &&
-            _engineState.value.isRunning
-        ) {
+        if (sessionId != GLOBAL_SESSION_ID && pipelines.isEmpty() && _engineState.value.isRunning) {
             Log.i(TAG, "No real audio sessions remain; restoring global fallback session 0")
             attachSession(GLOBAL_SESSION_ID)
         }
-
         updateState()
     }
 
@@ -134,6 +119,7 @@ class SbzDspEngine {
             pipeline.dynamicsProcessing.release()
             pipeline.virtualizer.release()
             pipeline.hallReverb.release()
+            pipeline.pureEqEngine.release() // Liberación de recursos del motor puro
         } catch (e: Exception) {
             Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
         }
@@ -151,13 +137,6 @@ class SbzDspEngine {
         updateState()
     }
 
-    /**
-     * Update only one MDRC band on every active pipeline.
-     *
-     * This is intentionally separate from updateConfig(): dragging an MDRC
-     * crossover must not rebuild/rewrite EQ, limiter, gain, virtualizer or
-     * the other MDRC bands on every UI event.
-     */
     @Synchronized
     fun updateRealtimeConfig(config: DspConfig) {
         val previous = currentConfig
@@ -168,34 +147,33 @@ class SbzDspEngine {
             config.eqGains.indices.filter { i -> previous.eqGains.getOrNull(i) != config.eqGains.getOrNull(i) }
         } else emptyList()
 
-        val onlyFastChanges =
-            previous.isEnabled == config.isEnabled &&
-            previous.preGainDb == config.preGainDb &&
-            previous.bassBoostEnabled == config.bassBoostEnabled &&
-            previous.bassBoostStrength == config.bassBoostStrength &&
-            previous.mdrcEnabled == config.mdrcEnabled &&
-            previous.mdrcBands == config.mdrcBands &&
-            previous.hallEnabled == config.hallEnabled &&
-            previous.hallMixPercent == config.hallMixPercent &&
-            previous.hallDecayTimeMs == config.hallDecayTimeMs &&
-            previous.hallDecayHfRatio == config.hallDecayHfRatio &&
-            previous.hallDensityPercent == config.hallDensityPercent &&
-            previous.hallDiffusionPercent == config.hallDiffusionPercent &&
-            previous.hallReflectionsDelayMs == config.hallReflectionsDelayMs &&
-            previous.hallReflectionsLevelDb == config.hallReflectionsLevelDb &&
-            previous.hallReverbDelayMs == config.hallReverbDelayMs &&
-            previous.hallRoomHfLevelDb == config.hallRoomHfLevelDb &&
-            previous.hallRoomLevelDb == config.hallRoomLevelDb &&
-            previous.autoGainEnabled == config.autoGainEnabled &&
-            previous.autoGainTargetDb == config.autoGainTargetDb &&
-            previous.virtualizerEnabled == config.virtualizerEnabled &&
-            previous.virtualizerStrength == config.virtualizerStrength &&
-            previous.limiterEnabled == config.limiterEnabled &&
-            previous.limiterThresholdDb == config.limiterThresholdDb &&
-            previous.limiterAttackMs == config.limiterAttackMs &&
-            previous.limiterReleaseMs == config.limiterReleaseMs &&
-            previous.limiterRatio == config.limiterRatio &&
-            previous.limiterPostGainDb == config.limiterPostGainDb
+        val onlyFastChanges = previous.isEnabled == config.isEnabled &&
+                previous.preGainDb == config.preGainDb &&
+                previous.bassBoostEnabled == config.bassBoostEnabled &&
+                previous.bassBoostStrength == config.bassBoostStrength &&
+                previous.mdrcEnabled == config.mdrcEnabled &&
+                previous.mdrcBands == config.mdrcBands &&
+                previous.hallEnabled == config.hallEnabled &&
+                previous.hallMixPercent == config.hallMixPercent &&
+                previous.hallDecayTimeMs == config.hallDecayTimeMs &&
+                previous.hallDecayHfRatio == config.hallDecayHfRatio &&
+                previous.hallDensityPercent == config.hallDensityPercent &&
+                previous.hallDiffusionPercent == config.hallDiffusionPercent &&
+                previous.hallReflectionsDelayMs == config.hallReflectionsDelayMs &&
+                previous.hallReflectionsLevelDb == config.hallReflectionsLevelDb &&
+                previous.hallReverbDelayMs == config.hallReverbDelayMs &&
+                previous.hallRoomHfLevelDb == config.hallRoomHfLevelDb &&
+                previous.hallRoomLevelDb == config.hallRoomLevelDb &&
+                previous.autoGainEnabled == config.autoGainEnabled &&
+                previous.autoGainTargetDb == config.autoGainTargetDb &&
+                previous.virtualizerEnabled == config.virtualizerEnabled &&
+                previous.virtualizerStrength == config.virtualizerStrength &&
+                previous.limiterEnabled == config.limiterEnabled &&
+                previous.limiterThresholdDb == config.limiterThresholdDb &&
+                previous.limiterAttackMs == config.limiterAttackMs &&
+                previous.limiterReleaseMs == config.limiterReleaseMs &&
+                previous.limiterRatio == config.limiterRatio &&
+                previous.limiterPostGainDb == config.limiterPostGainDb
 
         if (!onlyFastChanges) {
             updateConfig(config)
@@ -209,9 +187,7 @@ class SbzDspEngine {
             if (previous.balance != config.balance) {
                 pipeline.dynamicsProcessing.updateBalance(config)
             }
-            if (previous.toneBassDb != config.toneBassDb ||
-                previous.toneMidDb != config.toneMidDb ||
-                previous.toneTrebleDb != config.toneTrebleDb) {
+            if (previous.toneBassDb != config.toneBassDb || previous.toneMidDb != config.toneMidDb || previous.toneTrebleDb != config.toneTrebleDb) {
                 pipeline.dynamicsProcessing.updateTone(config)
             }
             for (index in changedEqIndices) {
@@ -230,6 +206,16 @@ class SbzDspEngine {
         updateState()
     }
 
+    /**
+     * Método directo para actualizar una banda del ecualizador puro de 32 bandas en tiempo real.
+     */
+    @Synchronized
+    fun setPureEqBandGain(bandIndex: Int, gainDb: Float) {
+        for ((_, pipeline) in pipelines) {
+            pipeline.pureEqEngine.setBandGain(bandIndex, gainDb)
+        }
+    }
+
     private fun applyConfigToSession(sessionId: Int, config: DspConfig) {
         pipelines[sessionId]?.let { pipeline ->
             applyConfigToPipeline(pipeline, config)
@@ -238,16 +224,11 @@ class SbzDspEngine {
 
     private fun applyConfigToPipeline(pipeline: SessionPipeline, config: DspConfig) {
         try {
-            // DynamicsProcessing carries EQ, MDRC, Tone, headroom compensation, Limiter and Master Gain
             pipeline.dynamicsProcessing.applyConfig(config)
-
-            // Virtualizer
             pipeline.virtualizer.apply(
                 config.isEnabled && config.virtualizerEnabled,
                 config.virtualizerStrength
             )
-
-            // Native environmental hall/reverb.
             pipeline.hallReverb.apply(config)
         } catch (e: Exception) {
             Log.e(TAG, "Error applying config to pipeline: ${e.message}", e)
@@ -277,6 +258,7 @@ class SbzDspEngine {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
                 pipeline.hallReverb.release()
+                pipeline.pureEqEngine.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping session $sessionId: ${e.message}")
             }

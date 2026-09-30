@@ -22,15 +22,26 @@ import com.sbz.ui.components.SbzFader
 import com.sbz.ui.theme.*
 
 @Composable
-fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
+fun EqualizerScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
     val config by viewModel.config.collectAsState()
 
+    val frequencies = remember {
+        DspConfig.FREQUENCIES.toList()
+    }
+
     Column(
-        modifier
+        modifier = modifier
             .fillMaxSize()
             .background(SbzBackground)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
+
+        // ============================================================
+        // CURVA DEL EQ
+        // ============================================================
         EqCurveVisualizer(
             eqGains = config.eqGains,
             toneBassDb = config.toneBassDb,
@@ -41,6 +52,9 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(10.dp))
 
+        // ============================================================
+        // CABECERA
+        // ============================================================
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -54,10 +68,13 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     fontWeight = FontWeight.Bold,
                     color = SbzCyan
                 )
+
                 val maxGain = config.eqGains.maxOrNull() ?: 0f
                 val minGain = config.eqGains.minOrNull() ?: 0f
+
                 Text(
-                    text = "Máx.: +%.1f dB / Mín.: %.1f dB • Pasos de 0,5 dB".format(maxGain, minGain),
+                    text = "Máx.: +%.1f dB / Mín.: %.1f dB • Pasos de 0,5 dB"
+                        .format(maxGain, minGain),
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     color = SbzTextSecondary
@@ -67,16 +84,26 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             OutlinedButton(
                 onClick = { viewModel.resetEq() },
                 shape = RoundedCornerShape(6.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = SbzCyan),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
+                contentPadding = PaddingValues(
+                    horizontal = 10.dp,
+                    vertical = 4.dp
+                ),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = SbzCyan
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    SbzBorder
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.RestartAlt,
                     contentDescription = "Plano",
                     modifier = Modifier.size(14.dp)
                 )
+
                 Spacer(Modifier.width(4.dp))
+
                 Text(
                     text = "Plano (0 dB)",
                     fontSize = 11.sp
@@ -86,64 +113,128 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(8.dp))
 
-        // Contenedor dividido en dos filas horizontales (16 bandas cada una)
+        // ============================================================
+        // ÁREA DEL EQ: DOS FILAS DE 16 BANDAS
+        // ============================================================
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.SpaceEvenly
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Fila Superior (Bandas 0 a 15: Graves y Medios-Bajos)
-            Text(
-                text = "Graves y Medios",
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                color = SbzTextSecondary,
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-            )
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
+
+            // ========================================================
+            // FILA 1 — BANDAS 0..15
+            // ========================================================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             ) {
-                val frequencies = DspConfig.FREQUENCIES.toList()
-                val topRowIndices = (0 until 16).filter { it < frequencies.size }
-                
-                itemsIndexed(topRowIndices) { _, index ->
-                    val frequency = frequencies[index]
-                    SbzFader(
-                        gainDb = config.eqGains.getOrElse(index) { 0.0f },
-                        frequencyHz = frequency,
-                        onGainChanged = { viewModel.setBandGain(index, it) }
+                Text(
+                    text = "GRAVES Y MEDIOS",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = SbzTextSecondary,
+                    modifier = Modifier.padding(
+                        start = 4.dp,
+                        bottom = 2.dp
                     )
+                )
+
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = 4.dp
+                    )
+                ) {
+                    val topRowIndices = (0 until 16)
+                        .filter { it < frequencies.size }
+
+                    itemsIndexed(topRowIndices) { _, index ->
+
+                        val frequency = frequencies[index]
+
+                        SbzFader(
+                            gainDb = config.eqGains
+                                .getOrElse(index) { 0.0f },
+
+                            frequencyHz = frequency,
+
+                            onGainChanged = { gain ->
+                                viewModel.setBandGain(
+                                    index,
+                                    gain
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
-
-            // Fila Inferior (Bandas 16 a 31: Medios-Altos y Agudos)
-            Text(
-                text = "Medios-Altos y Agudos",
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                color = SbzTextSecondary,
-                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+            // ========================================================
+            // SEPARADOR ENTRE FILAS
+            // ========================================================
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
             )
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(horizontal = 4.dp)
-            ) {
-                val frequencies = DspConfig.FREQUENCIES.toList()
-                val bottomRowIndices = (16 until frequencies.size).toList()
 
-                itemsIndexed(bottomRowIndices) { _, index ->
-                    val frequency = frequencies[index]
-                    SbzFader(
-                        gainDb = config.eqGains.getOrElse(index) { 0.0f },
-                        frequencyHz = frequency,
-                        onGainChanged = { viewModel.setBandGain(index, it) }
+            // ========================================================
+            // FILA 2 — BANDAS 16..31
+            // ========================================================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                Text(
+                    text = "MEDIOS-ALTOS Y AGUDOS",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = SbzTextSecondary,
+                    modifier = Modifier.padding(
+                        start = 4.dp,
+                        bottom = 2.dp
                     )
+                )
+
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = 4.dp
+                    )
+                ) {
+                    val bottomRowIndices =
+                        (16 until frequencies.size).toList()
+
+                    itemsIndexed(bottomRowIndices) { _, index ->
+
+                        val frequency = frequencies[index]
+
+                        SbzFader(
+                            gainDb = config.eqGains
+                                .getOrElse(index) { 0.0f },
+
+                            frequencyHz = frequency,
+
+                            onGainChanged = { gain ->
+                                viewModel.setBandGain(
+                                    index,
+                                    gain
+                                )
+                            }
+                        )
+                    }
                 }
             }
         }

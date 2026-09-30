@@ -1,12 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="sbz_primary">#00E5FF</color>
-    <color name="sbz_primary_container">#00363D</color>
-    <color name="sbz_background">#0C0F12</color>
-    <color name="sbz_surface">#161B22</color>
-    <color name="sbz_surface_variant">#212832</color>
-    <color name="sbz_accent_amber">#FFAB00</color>
-    <color name="sbz_accent_red">#FF1744</color>
-    <color name="sbz_text_primary">#F0F6FC</color>
+    <!-- PRIMARY - Ahora es Naranja Industrial, antes Cyan #00E5FF -->
+    <color name="sbz_primary">#FF8A1F</color>
+    <color name="sbz_primary_container">#3D1E00</color>
+
+    <!-- FONDOS - Acero Gunmetal -->
+    <color name="sbz_background">#0A0E12</color>
+    <color name="sbz_surface">#1C2228</color>
+    <color name="sbz_surface_variant">#3A434C</color>
+
+    <!-- ACENTOS -->
+    <color name="sbz_accent_amber">#FF8A1F</color>
+    <color name="sbz_accent_red">#FF3D1A</color> <!-- más quemado, tipo LED de clip -->
+
+    <!-- TEXTOS - Ahora cálidos ámbar, no fríos -->
+    <color name="sbz_text_primary">#FFD6A0</color>
     <color name="sbz_text_secondary">#8B949E</color>
+
+    <!-- EXTRAS que vas a necesitar para el efecto metal -->
+    <color name="sbz_led_glow">#80FF8A1F</color>
+    <color name="sbz_steel_light">#5A656E</color>
+    <color name="sbz_steel_border">#2A333B</color>
+    <color name="sbz_green_activo">#35FF6E</color>
 </resources>

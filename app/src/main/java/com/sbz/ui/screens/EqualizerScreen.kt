@@ -86,17 +86,59 @@ fun EqualizerScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(8.dp))
 
-        Box(
-            Modifier
+        // Contenedor dividido en dos filas horizontales (16 bandas cada una)
+        Column(
+            modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f),
+            verticalArrangement = Arrangement.SpaceEvenly
         ) {
+            // Fila Superior (Bandas 0 a 15: Graves y Medios-Bajos)
+            Text(
+                text = "Graves y Medios",
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = SbzTextSecondary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+            )
             LazyRow(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 contentPadding = PaddingValues(horizontal = 4.dp)
             ) {
-                itemsIndexed(DspConfig.FREQUENCIES.toList()) { index, frequency ->
+                val frequencies = DspConfig.FREQUENCIES.toList()
+                val topRowIndices = (0 until 16).filter { it < frequencies.size }
+                
+                itemsIndexed(topRowIndices) { _, index ->
+                    val frequency = frequencies[index]
+                    SbzFader(
+                        gainDb = config.eqGains.getOrElse(index) { 0.0f },
+                        frequencyHz = frequency,
+                        onGainChanged = { viewModel.setBandGain(index, it) }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // Fila Inferior (Bandas 16 a 31: Medios-Altos y Agudos)
+            Text(
+                text = "Medios-Altos y Agudos",
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = SbzTextSecondary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(horizontal = 4.dp)
+            ) {
+                val frequencies = DspConfig.FREQUENCIES.toList()
+                val bottomRowIndices = (16 until frequencies.size).toList()
+
+                itemsIndexed(bottomRowIndices) { _, index ->
+                    val frequency = frequencies[index]
                     SbzFader(
                         gainDb = config.eqGains.getOrElse(index) { 0.0f },
                         frequencyHz = frequency,

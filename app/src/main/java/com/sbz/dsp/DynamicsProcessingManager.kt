@@ -34,12 +34,9 @@ class DynamicsProcessingManager(
         private const val NATIVE_EQ_MIN_BANDS = 32
         private const val CHANNEL_COUNT = 2
 
-        // The T509A exposes 5 PRE-EQ + 5 POST-EQ physical bands.
-        // We therefore keep the 32-band logical preset/UI model but use
-        // a stable 10-filter hardware backend on this device class.
         private const val REQUESTED_EQ_BANDS = 32
-        private const val PHYSICAL_PRE_EQ_BANDS = 5
-        private const val PHYSICAL_POST_EQ_BANDS = 5
+        private const val FALLBACK_EQ_BANDS_16 = 16
+        private const val FALLBACK_EQ_BANDS_8 = 8
 
         private const val MDRC_BAND_COUNT = 4
 
@@ -53,17 +50,6 @@ class DynamicsProcessingManager(
         private const val DEFAULT_RELEASE_MS = 80f
         private const val DEFAULT_MAKEUP_DB = 0f
         private const val DEFAULT_KNEE_DB = 2f
-
-        // Stable centers/cutoffs for the ten-filter hardware representation.
-        // PRE-EQ carries the lower/middle portion; POST-EQ carries the upper
-        // portion. The HAL may quantize these values, so the applied values
-        // are always read back by diagnostics.
-        private val PRE_EQ_FREQUENCIES = floatArrayOf(
-            40f, 100f, 250f, 630f, 1600f
-        )
-        private val POST_EQ_FREQUENCIES = floatArrayOf(
-            3150f, 5000f, 8000f, 12500f, 20000f
-        )
     }
 
     data class EqBackendInfo(
@@ -268,27 +254,14 @@ class DynamicsProcessingManager(
      * native backend may accept a different physical band count.
      */
     private fun refreshEqBackendInfo(dp: DynamicsProcessing) {
-        val preCount = try {
-            dp.getConfig().preEqBandCount
-        } catch (_: Exception) {
-            0
-        }
-        val postCount = try {
+        val actualCount = try {
             dp.getConfig().postEqBandCount
         } catch (_: Exception) {
             0
         }
-        val actualCount = preCount + postCount
 
         val frequencies = buildList {
-            for (index in 0 until preCount) {
-                try {
-                    add(dp.getPreEqByChannelIndex(0).getBand(index).getCutoffFrequency())
-                } catch (_: Exception) {
-                    break
-                }
-            }
-            for (index in 0 until postCount) {
+            for (index in 0 until actualCount) {
                 try {
                     add(dp.getPostEqByChannelIndex(0).getBand(index).getCutoffFrequency())
                 } catch (_: Exception) {
@@ -311,9 +284,8 @@ class DynamicsProcessingManager(
         val info = eqBackendInfo
         Log.i(
             TAG,
-            "EQ backend map: logical=${info.requestedBandCount}, " +
-                "physical=${info.actualBandCount} (PRE+POST), " +
-                "channels=${info.channelCount}"
+            "EQ backend map: requested=${info.requestedBandCount}, " +
+                "actual=${info.actualBandCount}, channels=${info.channelCount}"
         )
 
         info.frequenciesHz.forEachIndexed { index, frequency ->
@@ -331,37 +303,56 @@ class DynamicsProcessingManager(
     }
 
     private fun createInitialConfig(): DynamicsProcessing.Config {
-        /*
-         * Do not request 32/16/8 here anymore. The diagnostic on the target
-         * T509A proved that the HAL reduces those requests to 5 PRE + 5 POST
-         * bands anyway. Requesting 5 + 5 explicitly makes the actual backend
-         * deterministic and lets sBz use both EQ stages as ten physical EQ
-         * filters. The 32 logical bands remain in DspConfig/presets.
-         */
-        val builder = DynamicsProcessing.Config.Builder(
-            DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-            CHANNEL_COUNT,
-            true,
-            PHYSICAL_PRE_EQ_BANDS,
-            true,
-            MDRC_BAND_COUNT,
-            true,
-            PHYSICAL_POST_EQ_BANDS,
-            true
+        val candidates = intArrayOf(
+            REQUESTED_EQ_BANDS,
+            FALLBACK_EQ_BANDS_16,
+            FALLBACK_EQ_BANDS_8
         )
 
-        val config = builder.build()
+        var lastError: Exception? = null
 
-        eqBandCount = PHYSICAL_POST_EQ_BANDS
+        for (bandCount in candidates) {
+            try {
+                val builder = DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    CHANNEL_COUNT,
+                    true,
+                    bandCount,
+                    true,
+                    MDRC_BAND_COUNT,
+                    true,
+                    bandCount,
+                    true
+                )
 
-        Log.i(
-            TAG,
-            "DynamicsProcessing config created: " +
-                "PRE=$PHYSICAL_PRE_EQ_BANDS POST=$PHYSICAL_POST_EQ_BANDS " +
-                "MDRC=$MDRC_BAND_COUNT"
+                val config = builder.build()
+
+                eqBandCount = bandCount
+
+                Log.i(
+                    TAG,
+                    "DynamicsProcessing config created: " +
+                        "EQ=$bandCount MDRC=$MDRC_BAND_COUNT"
+                )
+
+                return config
+
+            } catch (e: Exception) {
+                lastError = e
+
+                Log.w(
+                    TAG,
+                    "Unable to create DynamicsProcessing " +
+                        "config with EQ=$bandCount",
+                    e
+                )
+            }
+        }
+
+        throw IllegalStateException(
+            "Unable to create DynamicsProcessing configuration",
+            lastError
         )
-
-        return config
     }
 
     /**
@@ -557,16 +548,32 @@ class DynamicsProcessingManager(
             return
         }
 
-        /*
-         * IMPORTANT: a logical 32-band fader must never move a physical
-         * DynamicsProcessing cutoff. On the T509A multiple logical bands map
-         * onto the same physical filter; moving its cutoff while dragging one
-         * fader makes the mapping unstable and causes the grouped behaviour
-         * observed on the low bands.
-         *
-         * Re-apply the complete stable 10-band map instead.
-         */
-        applyGraphicEq(dp, config)
+        val count = dp.getConfig().postEqBandCount
+        if (count <= 0) return
+
+        val exactOneToOne =
+            count == config.eqGains.size &&
+                count == DspConfig.FREQUENCIES.size
+        val frequency = DspConfig.FREQUENCIES[sourceIndex]
+        val nativeIndex = if (exactOneToOne) {
+            sourceIndex
+        } else {
+            mapSourceFrequencyToNativeIndex(frequency, count, dp)
+        }
+        val eqGain = if (config.isEnabled) config.eqGains[sourceIndex].coerceIn(-15f, 15f) else 0f
+
+        for (channel in 0 until dp.channelCountSafe()) {
+            try {
+                val postEq = dp.getPostEqByChannelIndex(channel)
+                val band = postEq.getBand(nativeIndex)
+                band.setEnabled(config.isEnabled)
+                band.setCutoffFrequency(frequency.coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
+                band.setGain((eqGain + balanceCompensationDb(channel, config.balance)).coerceIn(-60f, 15f))
+                dp.setPostEqByChannelIndex(channel, postEq)
+            } catch (e: Exception) {
+                Log.w(TAG, "Unable to update EQ band=$sourceIndex on channel=$channel", e)
+            }
+        }
     }
 
     @Synchronized
@@ -616,45 +623,83 @@ class DynamicsProcessingManager(
         config: DspConfig
     ) {
         val count = dp.getConfig().preEqBandCount
-        if (count <= 0) return
 
-        val eqGains = stablePhysicalEqGains(config.eqGains, count, PRE_EQ_FREQUENCIES)
+        if (count <= 0) return
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
                 val preEq = dp.getPreEqByChannelIndex(channel)
+
                 preEq.setEnabled(config.isEnabled)
 
-                for (bandIndex in 0 until count) {
-                    val band = preEq.getBand(bandIndex)
-                    val frequency = PRE_EQ_FREQUENCIES.getOrElse(bandIndex) {
-                        calculateStageFrequency(bandIndex, count)
+                val bassGain =
+                    if (config.isEnabled) {
+                        config.toneBassDb.coerceIn(-12f, 12f)
+                    } else {
+                        0f
                     }
-                    val toneGain = toneGainForFrequency(config, frequency)
-                    val eqGain = if (config.isEnabled) eqGains[bandIndex] else 0f
+
+                val midGain =
+                    if (config.isEnabled) {
+                        config.toneMidDb.coerceIn(-12f, 12f)
+                    } else {
+                        0f
+                    }
+
+                val trebleGain =
+                    if (config.isEnabled) {
+                        config.toneTrebleDb.coerceIn(-12f, 12f)
+                    } else {
+                        0f
+                    }
+
+                for (bandIndex in 0 until count) {
+                    val frequency = calculateStageFrequency(
+                        bandIndex,
+                        count
+                    )
+
+                    val gain = when {
+                        frequency <= 200f -> bassGain
+                        frequency <= 2000f -> midGain
+                        else -> trebleGain
+                    }
+
+                    val band = preEq.getBand(bandIndex)
 
                     band.setEnabled(config.isEnabled)
-                    band.setCutoffFrequency(frequency.coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
-                    band.setGain((toneGain + eqGain).coerceIn(-15f, 15f))
+                    band.setGain(gain)
+                    band.setCutoffFrequency(
+                        frequency.coerceIn(
+                            MIN_CUTOFF_HZ,
+                            MAX_CUTOFF_HZ
+                        )
+                    )
                 }
 
-                if (config.bassBoostEnabled && config.isEnabled) {
-                    applyBassBoostCompensation(preEq, count, config)
+                if (
+                    config.bassBoostEnabled &&
+                    config.isEnabled
+                ) {
+                    applyBassBoostCompensation(
+                        preEq,
+                        count,
+                        config
+                    )
                 }
 
-                dp.setPreEqByChannelIndex(channel, preEq)
+                dp.setPreEqByChannelIndex(
+                    channel,
+                    preEq
+                )
+
             } catch (e: Exception) {
-                Log.w(TAG, "Unable to apply Pre-EQ on channel=$channel", e)
+                Log.w(
+                    TAG,
+                    "Unable to apply Pre-EQ on channel=$channel",
+                    e
+                )
             }
-        }
-    }
-
-    private fun toneGainForFrequency(config: DspConfig, frequency: Float): Float {
-        if (!config.isEnabled) return 0f
-        return when {
-            frequency <= 200f -> config.toneBassDb.coerceIn(-12f, 12f)
-            frequency <= 2000f -> config.toneMidDb.coerceIn(-12f, 12f)
-            else -> config.toneTrebleDb.coerceIn(-12f, 12f)
         }
     }
 
@@ -670,10 +715,14 @@ class DynamicsProcessingManager(
 
         for (bandIndex in 0 until count) {
             val band = preEq.getBand(bandIndex)
+
             val frequency = try {
                 band.getCutoffFrequency()
             } catch (_: Exception) {
-                calculateStageFrequency(bandIndex, count)
+                calculateStageFrequency(
+                    bandIndex,
+                    count
+                )
             }
 
             if (frequency <= 160f) {
@@ -683,7 +732,10 @@ class DynamicsProcessingManager(
                     0f
                 }
 
-                band.setGain((existingGain + boostDb).coerceIn(-15f, 15f))
+                band.setGain(
+                    (existingGain + boostDb)
+                        .coerceIn(-15f, 15f)
+                )
             }
         }
     }
@@ -693,6 +745,8 @@ class DynamicsProcessingManager(
         config: DspConfig
     ) {
         if (hasNativeGraphicEq()) {
+            // The vendor Equalizer is the active 32+ band graphic EQ.
+            // Keep DynamicsProcessing Post-EQ bypassed to avoid double EQ.
             for (channel in 0 until dp.channelCountSafe()) {
                 try {
                     val postEq = dp.getPostEqByChannelIndex(channel)
@@ -712,97 +766,78 @@ class DynamicsProcessingManager(
         }
 
         val count = dp.getConfig().postEqBandCount
-        if (count <= 0) return
 
-        val eqGains = stablePhysicalEqGains(config.eqGains, count, POST_EQ_FREQUENCIES)
+        if (count <= 0) return
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
-                val postEq = dp.getPostEqByChannelIndex(channel)
+                val postEq =
+                    dp.getPostEqByChannelIndex(channel)
+
                 postEq.setEnabled(config.isEnabled)
 
                 for (bandIndex in 0 until count) {
                     val band = postEq.getBand(bandIndex)
-                    val frequency = POST_EQ_FREQUENCIES.getOrElse(bandIndex) {
-                        calculateStageFrequency(bandIndex, count)
+                    val exactOneToOne =
+                        count == config.eqGains.size &&
+                            count == DspConfig.FREQUENCIES.size
+                    val sourceIndex = if (exactOneToOne) {
+                        bandIndex
+                    } else {
+                        nearestSourceBandIndex(
+                            nativeBandFrequency(bandIndex, count, band),
+                            config.eqGains.size
+                        )
                     }
-                    val eqGain = if (config.isEnabled) eqGains[bandIndex] else 0f
+                    val frequency = if (exactOneToOne) {
+                        DspConfig.FREQUENCIES[bandIndex]
+                    } else {
+                        nativeBandFrequency(bandIndex, count, band)
+                    }
+
+                    val eqGain =
+                        if (config.isEnabled) {
+                            config.eqGains
+                                .getOrElse(sourceIndex) { 0f }
+                                .coerceIn(-15f, 15f)
+                        } else {
+                            0f
+                        }
+
+                    // Balance is implemented as a per-channel gain at the final EQ stage.
+                    // This avoids a second native effect and keeps the DSP chain compact.
                     val balanceGainDb = balanceCompensationDb(channel, config.balance)
+                    val gain = (eqGain + balanceGainDb).coerceIn(-60f, 15f)
 
                     band.setEnabled(config.isEnabled)
-                    band.setCutoffFrequency(frequency.coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
-                    band.setGain((eqGain + balanceGainDb).coerceIn(-60f, 15f))
+
+                    band.setCutoffFrequency(
+                        frequency.coerceIn(
+                            MIN_CUTOFF_HZ,
+                            MAX_CUTOFF_HZ
+                        )
+                    )
+
+                    /*
+                     * Full graphic EQ gain is applied here.
+                     * No 50/50 Pre-EQ/Post-EQ split.
+                     */
+                    band.setGain(gain)
                 }
 
-                dp.setPostEqByChannelIndex(channel, postEq)
+                dp.setPostEqByChannelIndex(
+                    channel,
+                    postEq
+                )
+
             } catch (e: Exception) {
-                Log.w(TAG, "Unable to apply Post-EQ on channel=$channel", e)
+                Log.w(
+                    TAG,
+                    "Unable to apply Post-EQ on channel=$channel",
+                    e
+                )
             }
         }
-    }
-
-    /**
-     * Stable ten-filter backend for the target device. The 32 logical ISO
-     * bands remain intact in DspConfig. Each physical filter receives a
-     * logarithmic interpolation of the nearest logical bands, so changing a
-     * low fader primarily changes the nearby physical filter instead of
-     * affecting the entire EQ stage.
-     */
-    private fun stablePhysicalEqGains(
-        logicalGains: List<Float>,
-        physicalCount: Int,
-        physicalFrequencies: FloatArray
-    ): FloatArray {
-        val result = FloatArray(physicalCount)
-        if (logicalGains.isEmpty()) return result
-
-        for (physicalIndex in 0 until physicalCount) {
-            val target = physicalFrequencies.getOrElse(physicalIndex) {
-                calculateStageFrequency(physicalIndex, physicalCount)
-            }.coerceAtLeast(1f)
-
-            result[physicalIndex] = interpolateLogicalGain(
-                logicalGains,
-                target
-            )
-        }
-
-        return result
-    }
-
-    private fun interpolateLogicalGain(
-        logicalGains: List<Float>,
-        targetFrequencyHz: Float
-    ): Float {
-        val count = minOf(logicalGains.size, DspConfig.FREQUENCIES.size)
-        if (count <= 0) return 0f
-        if (count == 1) return logicalGains[0].coerceIn(-15f, 15f)
-
-        if (targetFrequencyHz <= DspConfig.FREQUENCIES[0]) {
-            return logicalGains[0].coerceIn(-15f, 15f)
-        }
-        if (targetFrequencyHz >= DspConfig.FREQUENCIES[count - 1]) {
-            return logicalGains[count - 1].coerceIn(-15f, 15f)
-        }
-
-        for (index in 0 until count - 1) {
-            val lowerHz = DspConfig.FREQUENCIES[index]
-            val upperHz = DspConfig.FREQUENCIES[index + 1]
-
-            if (targetFrequencyHz <= upperHz) {
-                val lowerLog = kotlin.math.ln(lowerHz.toDouble())
-                val upperLog = kotlin.math.ln(upperHz.toDouble())
-                val targetLog = kotlin.math.ln(targetFrequencyHz.toDouble())
-                val span = (upperLog - lowerLog).coerceAtLeast(1e-9)
-                val t = ((targetLog - lowerLog) / span).toFloat().coerceIn(0f, 1f)
-
-                val a = logicalGains[index].coerceIn(-15f, 15f)
-                val b = logicalGains[index + 1].coerceIn(-15f, 15f)
-                return a + (b - a) * t
-            }
-        }
-
-        return logicalGains[count - 1].coerceIn(-15f, 15f)
     }
 
     /**

@@ -374,40 +374,52 @@ class DynamicsProcessingManager(
 
         val dp = effect ?: return
         val mdrcCount = dp.getConfig().mbcBandCount
-
         if (mdrcCount <= 0 || bandIndex !in 0 until mdrcCount) return
 
-        val requestedBands = normalizeMdrcBands(config.mdrcBands)
-        val source = requestedBands.getOrNull(bandIndex)
-            ?: defaultMdrcBand(bandIndex)
-
+        /*
+         * Normalize the complete crossover set first. This guarantees that
+         * the native MBC always receives monotonically increasing cutoffs.
+         *
+         * Android defines each MbcBand cutoff as the TOP of that band's
+         * frequency range; band N therefore starts at the previous band's
+         * cutoff. The HAL expects these cutoffs to increase with band index.
+         */
+        val bands = normalizeMdrcBands(config.mdrcBands)
+        val source = bands.getOrNull(bandIndex) ?: defaultMdrcBand(bandIndex)
         val mdrcActive = config.isEnabled && config.mdrcEnabled
-        val cutoff = source.cutoffFrequencyHz
-            .coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ)
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
-                val nativeBand = DynamicsProcessing.MbcBand(
-                    mdrcActive,
-                    cutoff,
-                    source.attackMs.coerceIn(0.1f, 1000f),
-                    source.releaseMs.coerceIn(1f, 2000f),
-                    source.ratio.coerceIn(1f, 20f),
-                    source.thresholdDb.coerceIn(-60f, 0f),
-                    source.kneeDb.coerceIn(0f, 30f),
-                    -80f,
-                    1f,
-                    0f,
-                    source.makeupGainDb.coerceIn(0f, 24f)
-                )
+                val nativeBand = createNativeMdrcBand(source, mdrcActive)
 
-                // Surgical update: no MBC disable/enable cycle and no rewrite
-                // of the other three bands while the fader is moving.
+                /*
+                 * A single-band update is intentionally kept surgical for
+                 * smooth fader response. No complete DSP rebuild is needed.
+                 */
                 dp.setMbcBandByChannelIndex(
                     channel,
                     bandIndex,
                     nativeBand
                 )
+
+                /*
+                 * Read back the cutoff actually accepted by the HAL.
+                 * Vendor implementations are allowed to quantize/clamp
+                 * parameters, so the diagnostic log must reflect reality.
+                 */
+                val accepted = dp
+                    .getMbcBandByChannelIndex(channel, bandIndex)
+                    .getCutoffFrequency()
+
+                if (kotlin.math.abs(accepted - source.cutoffFrequencyHz) > 0.5f) {
+                    Log.w(
+                        TAG,
+                        "MDRC HAL adjusted cutoff: session=$audioSessionId " +
+                            "channel=$channel band=$bandIndex " +
+                            "requested=${source.cutoffFrequencyHz}Hz " +
+                            "accepted=${accepted}Hz"
+                    )
+                }
             } catch (e: Exception) {
                 Log.e(
                     TAG,
@@ -416,6 +428,36 @@ class DynamicsProcessingManager(
                 )
             }
         }
+    }
+
+    private fun createNativeMdrcBand(
+        source: MdrcBandConfig,
+        enabled: Boolean
+    ): DynamicsProcessing.MbcBand {
+        /*
+         * Android MbcBand constructor:
+         * enabled, cutoff, attack, release, ratio, threshold, knee,
+         * noiseGateThreshold, expanderRatio, preGain, postGain.
+         *
+         * Noise gate and expander are intentionally neutral here because
+         * sBz's MDRC model does not expose them as user parameters yet.
+         */
+        return DynamicsProcessing.MbcBand(
+            enabled,
+            source.cutoffFrequencyHz.coerceIn(
+                MIN_CUTOFF_HZ,
+                MAX_CUTOFF_HZ
+            ),
+            source.attackMs.coerceIn(0.1f, 1000f),
+            source.releaseMs.coerceIn(1f, 2000f),
+            source.ratio.coerceIn(1f, 20f),
+            source.thresholdDb.coerceIn(-60f, 0f),
+            source.kneeDb.coerceIn(0f, 30f),
+            -80f,
+            1f,
+            0f,
+            source.makeupGainDb.coerceIn(0f, 24f)
+        )
     }
 
     @Synchronized
@@ -812,99 +854,67 @@ class DynamicsProcessingManager(
         dp: DynamicsProcessing,
         config: DspConfig
     ) {
-        val mdrc = dp.getConfig().mbcBandCount
+        val mdrcCount = dp.getConfig().mbcBandCount
+        if (mdrcCount <= 0) return
 
-        if (mdrc <= 0) return
-
-        val requestedBands =
-            normalizeMdrcBands(config.mdrcBands)
+        val requestedBands = normalizeMdrcBands(config.mdrcBands)
+        val mdrcActive = config.isEnabled && config.mdrcEnabled
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
                 /*
-                 * Keep the MBC stage disabled while its bands are being
-                 * replaced. This prevents a partially-updated multiband
-                 * configuration from reaching the audio path and causing
-                 * clicks/noise when MDRC is toggled.
-                 */
-                val mdrcActive =
-                    config.isEnabled && config.mdrcEnabled
-
-                val mbc = dp.getMbcByChannelIndex(channel)
-                mbc.setEnabled(false)
-                dp.setMbcByChannelIndex(channel, mbc)
-
-                /*
-                 * Write every band while the MBC stage is bypassed.
+                 * Build the complete native MBC off to the side, then submit
+                 * the stage once. This is preferable to:
+                 *   disable MBC -> write 4 bands -> enable MBC
                  *
-                 * Android's MbcBand constructor order is:
-                 * enabled, cutoffFrequency, attackTime, releaseTime,
-                 * ratio, threshold, kneeWidth, noiseGateThreshold,
-                 * expanderRatio, preGain, postGain.
+                 * because the old sequence created an avoidable bypass window
+                 * and could produce a transient/click on some vendor HALs.
+                 *
+                 * Android requires the replacement MBC to keep the same band
+                 * count as the original stage.
                  */
-                for (bandIndex in 0 until mdrc) {
-                    val source =
-                        requestedBands.getOrElse(
-                            bandIndex
-                        ) {
-                            defaultMdrcBand(bandIndex)
-                        }
+                val nativeMbc = DynamicsProcessing.Mbc(
+                    config.isEnabled,
+                    mdrcActive,
+                    mdrcCount
+                )
 
-                    val cutoff =
-                        source.cutoffFrequencyHz
-                            .coerceIn(
-                                MIN_CUTOFF_HZ,
-                                MAX_CUTOFF_HZ
-                            )
+                for (bandIndex in 0 until mdrcCount) {
+                    val source = requestedBands.getOrElse(bandIndex) {
+                        defaultMdrcBand(bandIndex)
+                    }
 
-                    val nativeBand =
-                        DynamicsProcessing.MbcBand(
-                            mdrcActive,
-                            cutoff,
-                            source.attackMs.coerceIn(
-                                0.1f,
-                                1000f
-                            ),
-                            source.releaseMs.coerceIn(
-                                1f,
-                                2000f
-                            ),
-                            source.ratio.coerceIn(
-                                1f,
-                                20f
-                            ),
-                            source.thresholdDb.coerceIn(
-                                -60f,
-                                0f
-                            ),
-                            source.kneeDb.coerceIn(
-                                0f,
-                                30f
-                            ),
-                            -80f,
-                            1f,
-                            0f,
-                            source.makeupGainDb.coerceIn(
-                                0f,
-                                24f
-                            )
-                        )
-
-                    dp.setMbcBandByChannelIndex(
-                        channel,
+                    nativeMbc.setBand(
                         bandIndex,
-                        nativeBand
+                        createNativeMdrcBand(source, mdrcActive)
                     )
                 }
 
-                /*
-                 * Enable the fully-configured MBC only after all bands
-                 * have been written.
-                 */
-                val finalMbc = dp.getMbcByChannelIndex(channel)
-                finalMbc.setEnabled(mdrcActive)
-                dp.setMbcByChannelIndex(channel, finalMbc)
+                dp.setMbcByChannelIndex(channel, nativeMbc)
 
+                /*
+                 * Verify the actual crossover values after the HAL accepted
+                 * the configuration. This is especially important on vendor
+                 * implementations that quantize or reject requested cutoffs.
+                 */
+                for (bandIndex in 0 until mdrcCount) {
+                    val requested = requestedBands.getOrElse(bandIndex) {
+                        defaultMdrcBand(bandIndex)
+                    }.cutoffFrequencyHz
+
+                    val accepted = dp
+                        .getMbcBandByChannelIndex(channel, bandIndex)
+                        .getCutoffFrequency()
+
+                    if (kotlin.math.abs(accepted - requested) > 0.5f) {
+                        Log.w(
+                            TAG,
+                            "MDRC HAL adjusted cutoff: session=$audioSessionId " +
+                                "channel=$channel band=$bandIndex " +
+                                "requested=${requested}Hz accepted=${accepted}Hz"
+                        )
+                    }
+                }
 
             } catch (e: Exception) {
                 Log.e(

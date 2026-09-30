@@ -566,7 +566,7 @@ class DynamicsProcessingManager(
          *
          * Re-apply the complete stable 10-band map instead.
          */
-        applyGraphicEq(config)
+        applyGraphicEq(dp, config)
     }
 
     @Synchronized

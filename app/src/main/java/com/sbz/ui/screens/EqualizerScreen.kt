@@ -1,9 +1,9 @@
 package com.sbz.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.RestartAlt
@@ -27,10 +27,7 @@ fun EqualizerScreen(
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.config.collectAsState()
-
-    val frequencies = remember {
-        DspConfig.FREQUENCIES.toList()
-    }
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -39,9 +36,6 @@ fun EqualizerScreen(
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
 
-        // ============================================================
-        // CURVA DEL EQ
-        // ============================================================
         EqCurveVisualizer(
             eqGains = config.eqGains,
             toneBassDb = config.toneBassDb,
@@ -52,9 +46,6 @@ fun EqualizerScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        // ============================================================
-        // CABECERA
-        // ============================================================
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -113,129 +104,31 @@ fun EqualizerScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // ============================================================
-        // ÁREA DEL EQ: DOS FILAS DE 16 BANDAS
-        // ============================================================
-        Column(
+        /*
+         * LAS 32 BANDAS EN UNA SOLA FILA
+         *
+         * La fila es más ancha que la pantalla y se desplaza
+         * horizontalmente para poder acceder a las 32 bandas.
+         */
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .weight(1f)
+                .horizontalScroll(scrollState),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            val frequencies = DspConfig.FREQUENCIES.toList()
 
-            // ========================================================
-            // FILA 1 — BANDAS 0..15
-            // ========================================================
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Text(
-                    text = "GRAVES Y MEDIOS",
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = SbzTextSecondary,
-                    modifier = Modifier.padding(
-                        start = 4.dp,
-                        bottom = 2.dp
-                    )
-                )
+            frequencies.forEachIndexed { index, frequency ->
 
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    contentPadding = PaddingValues(
-                        horizontal = 4.dp
-                    )
-                ) {
-                    val topRowIndices = (0 until 16)
-                        .filter { it < frequencies.size }
-
-                    itemsIndexed(topRowIndices) { _, index ->
-
-                        val frequency = frequencies[index]
-
-                        SbzFader(
-                            gainDb = config.eqGains
-                                .getOrElse(index) { 0.0f },
-
-                            frequencyHz = frequency,
-
-                            onGainChanged = { gain ->
-                                viewModel.setBandGain(
-                                    index,
-                                    gain
-                                )
-                            }
-                        )
+                SbzFader(
+                    gainDb = config.eqGains.getOrElse(index) { 0.0f },
+                    frequencyHz = frequency,
+                    onGainChanged = { gain ->
+                        viewModel.setBandGain(index, gain)
                     }
-                }
-            }
-
-            // ========================================================
-            // SEPARADOR ENTRE FILAS
-            // ========================================================
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-            )
-
-            // ========================================================
-            // FILA 2 — BANDAS 16..31
-            // ========================================================
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Text(
-                    text = "MEDIOS-ALTOS Y AGUDOS",
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = SbzTextSecondary,
-                    modifier = Modifier.padding(
-                        start = 4.dp,
-                        bottom = 2.dp
-                    )
                 )
-
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    contentPadding = PaddingValues(
-                        horizontal = 4.dp
-                    )
-                ) {
-                    val bottomRowIndices =
-                        (16 until frequencies.size).toList()
-
-                    itemsIndexed(bottomRowIndices) { _, index ->
-
-                        val frequency = frequencies[index]
-
-                        SbzFader(
-                            gainDb = config.eqGains
-                                .getOrElse(index) { 0.0f },
-
-                            frequencyHz = frequency,
-
-                            onGainChanged = { gain ->
-                                viewModel.setBandGain(
-                                    index,
-                                    gain
-                                )
-                            }
-                        )
-                    }
-                }
             }
         }
     }

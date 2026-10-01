@@ -22,7 +22,6 @@ class SbzDspEngine {
         val dynamicsProcessing: DynamicsProcessingManager,
         val virtualizer: VirtualizerManager,
         val hallReverb: HallReverbManager,
-        val pureEqEngine: PureMultiBandEqEngine // Motor puro de 32 bandas integrado
     )
 
     private val pipelines = ConcurrentHashMap<Int, SessionPipeline>()
@@ -79,9 +78,7 @@ class SbzDspEngine {
             }
             val virtManager = VirtualizerManager(sessionId)
             val hallManager = HallReverbManager(sessionId)
-            val pureEqManager = PureMultiBandEqEngine(sessionId, totalBands = 32) // Inicialización del motor de 32 bandas
-
-            val pipeline = SessionPipeline(dpManager, virtManager, hallManager, pureEqManager)
+            val pipeline = SessionPipeline(dpManager, virtManager, hallManager)
             pipelines[sessionId] = pipeline
 
             // Apply current config to this newly attached session
@@ -119,7 +116,6 @@ class SbzDspEngine {
             pipeline.dynamicsProcessing.release()
             pipeline.virtualizer.release()
             pipeline.hallReverb.release()
-            pipeline.pureEqEngine.release() // Liberación de recursos del motor puro
         } catch (e: Exception) {
             Log.w(TAG, "Error releasing session $sessionId pipeline: ${e.message}")
         }
@@ -206,16 +202,6 @@ class SbzDspEngine {
         updateState()
     }
 
-    /**
-     * Método directo para actualizar una banda del ecualizador puro de 32 bandas en tiempo real.
-     */
-    @Synchronized
-    fun setPureEqBandGain(bandIndex: Int, gainDb: Float) {
-        for ((_, pipeline) in pipelines) {
-            pipeline.pureEqEngine.setBandGain(bandIndex, gainDb)
-        }
-    }
-
     private fun applyConfigToSession(sessionId: Int, config: DspConfig) {
         pipelines[sessionId]?.let { pipeline ->
             applyConfigToPipeline(pipeline, config)
@@ -258,7 +244,6 @@ class SbzDspEngine {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
                 pipeline.hallReverb.release()
-                pipeline.pureEqEngine.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping session $sessionId: ${e.message}")
             }

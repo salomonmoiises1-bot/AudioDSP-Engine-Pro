@@ -62,6 +62,12 @@ class SbzAudioService : Service() {
     private val pendingRealtimeConfig = AtomicReference<DspConfig?>(null)
     private val realtimeWorkerScheduled = AtomicBoolean(false)
 
+    // Rate-limit native EQ/DSP writes to ~60 Hz while a fader is moving.
+    // UI state remains immediate; only native effect updates are coalesced.
+    private val realtimeMinIntervalNanos = 16_000_000L
+    @Volatile
+    private var lastRealtimeApplyNanos = 0L
+
     inner class LocalBinder : Binder() {
         fun getService(): SbzAudioService = this@SbzAudioService
     }
@@ -208,8 +214,27 @@ class SbzAudioService : Service() {
         dspExecutor.execute {
             try {
                 while (true) {
-                    val config = pendingRealtimeConfig.getAndSet(null) ?: break
+                    if (pendingRealtimeConfig.get() == null) break
+
+                    // Keep the first update immediate, then cap subsequent native
+                    // writes to ~60 Hz. During the wait, newer fader values replace
+                    // the pending one, so obsolete intermediate positions are skipped.
+                    val elapsed = System.nanoTime() - lastRealtimeApplyNanos
+                    val remaining = realtimeMinIntervalNanos - elapsed
+                    if (lastRealtimeApplyNanos != 0L && remaining > 0L) {
+                        try {
+                            val millis = remaining / 1_000_000L
+                            val nanos = (remaining % 1_000_000L).toInt()
+                            Thread.sleep(millis, nanos)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+
+                    val config = pendingRealtimeConfig.getAndSet(null) ?: continue
                     dspEngine.updateRealtimeConfig(config)
+                    lastRealtimeApplyNanos = System.nanoTime()
                 }
             } finally {
                 realtimeWorkerScheduled.set(false)

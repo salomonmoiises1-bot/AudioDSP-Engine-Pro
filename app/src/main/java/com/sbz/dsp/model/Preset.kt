@@ -31,6 +31,11 @@ data class Preset(
             return out.map { (kotlin.math.round(it * 2f) / 2f).coerceIn(-15f, 15f) }
         }
 
+        private fun bands(vararg values: Float): List<Float> {
+            require(values.size == 32) { "Un preset de EQ debe tener exactamente 32 bandas" }
+            return values.map { (kotlin.math.round(it * 2f) / 2f).coerceIn(-15f, 15f) }
+        }
+
         private fun preset(id: String, name: String, category: String, config: DspConfig): Preset {
             val effectiveConfig = if (config.mdrcBands == DspConfig.defaultMdrcBands()) {
                 config.copy(mdrcBands = config.mdrcProfileForPresetForFactory(id))
@@ -48,6 +53,13 @@ data class Preset(
 
         fun createDefaultPresets(): List<Preset> = listOf(
             preset("system_flat", "Plano de referencia de estudio", "Escucha", DspConfig()),
+            preset("speaker_aiwa_aws544_mod45", "Aiwa AWS544BT modificado • 45 Hz", "Bocinas personalizadas", DspConfig(preGainDb=-3f, limiterThresholdDb=-1f, eqGains=bands(1f,1.5f,2.5f,3.5f,4f,3.5f,3f,2f,1f,0.5f,0f,-1f,-1.5f,-1f,-0.5f,0f,0f,0f,0.5f,0.5f,1f,1f,1.5f,2f,2f,2f,2.5f,2f,1.5f,1f,0.5f,0f))),
+            preset("speaker_boombox_style", "Boombox • graves con pegada", "Bocinas personalizadas", DspConfig(preGainDb=-3f, limiterThresholdDb=-1f, eqGains=bands(0.5f,1.5f,2.5f,3.5f,4f,4f,3f,2f,1f,0f,-1f,-1.5f,-1f,-0.5f,0f,0f,0f,0f,0.5f,1f,1.5f,2f,2.5f,3f,3f,3f,3.5f,3f,2.5f,2f,1.5f,1f))),
+            preset("speaker_harman_go_style", "Harman Go • cálido y definido", "Bocinas personalizadas", DspConfig(preGainDb=-2f, limiterThresholdDb=-1f, eqGains=bands(1f,1.5f,2f,2.5f,3f,2.5f,2f,1.5f,1f,0.5f,0f,-0.5f,-0.5f,0f,0f,0f,0f,0.5f,0.5f,1f,1f,1.5f,2f,2.5f,2.5f,2.5f,2f,2f,1.5f,1f,0.5f,0f))),
+            preset("speaker_sonos_style", "Sonos • equilibrado", "Bocinas personalizadas", DspConfig(preGainDb=-2f, limiterThresholdDb=-1f, eqGains=bands(0.5f,1f,1.5f,2f,2.5f,2f,1.5f,1f,0.5f,0f,-0.5f,-0.5f,0f,0f,0f,0f,0f,0f,0.5f,0.5f,1f,1f,1.5f,2f,2f,2f,1.5f,1.5f,1f,0.5f,0f,0f))),
+            preset("speaker_bose_style", "Bose • cálido y amplio", "Bocinas personalizadas", DspConfig(preGainDb=-2.5f, limiterThresholdDb=-1f, eqGains=bands(1.5f,2f,2.5f,3f,3f,2.5f,2f,1.5f,1f,0.5f,0f,-0.5f,-0.5f,0f,0f,0f,0f,0f,0.5f,0.5f,1f,1.5f,2f,2.5f,2.5f,2f,2f,1.5f,1f,0.5f,0f,-0.5f))),
+            preset("speaker_devialet_style", "Devialet • graves profundos y aire", "Bocinas personalizadas", DspConfig(preGainDb=-4f, limiterThresholdDb=-1f, eqGains=bands(2f,2.5f,3f,4f,4.5f,4f,3f,2f,1f,0f,-1f,-1.5f,-1f,-0.5f,0f,0f,0f,0f,0.5f,1f,1.5f,2f,2.5f,3f,3.5f,3.5f,3f,2.5f,2f,1.5f,1f,0.5f))),
+            preset("speaker_aiwa_reference_45", "Aiwa modificado • referencia 45 Hz", "Bocinas personalizadas", DspConfig(preGainDb=-2f, limiterThresholdDb=-1f, eqGains=bands(0f,0.5f,1f,1.5f,2f,1.5f,1f,0.5f,0f,0f,0f,-0.5f,-0.5f,0f,0f,0f,0f,0f,0f,0.5f,0.5f,1f,1f,1.5f,1.5f,1.5f,1f,1f,0.5f,0.5f,0f,0f))),
             preset("portable_harman", "Portátil equilibrado", "Carácter portátil", DspConfig(eqGains = curve(0 to 2f, 4 to 1f, 10 to 0f, 20 to 1f, 27 to 2f, 31 to 1f))),
             preset("portable_jbl", "Portátil con graves", "Carácter portátil", DspConfig(bassBoostEnabled = true, bassBoostStrength = 300, eqGains = curve(0 to 4f, 4 to 3f, 9 to 0f, 20 to 1f, 27 to 3f, 31 to 2f))),
             preset("portable_sony", "Portátil brillante", "Carácter portátil", DspConfig(bassBoostEnabled = true, bassBoostStrength = 250, toneBassDb = 2f, toneTrebleDb = 2f, eqGains = curve(0 to 3f, 5 to 2f, 11 to -1f, 20 to 1f, 31 to 3f))),

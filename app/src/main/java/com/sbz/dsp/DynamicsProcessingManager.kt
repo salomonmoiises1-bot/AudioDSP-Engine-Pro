@@ -596,6 +596,9 @@ class DynamicsProcessingManager(
         ParametricToDpConverter.deviceSampleRateHz =
             48000f
 
+        ParametricToDpConverter.frameDurationMs =
+            DP_FRAME_DURATION_MS
+
         val eq =
             ParametricEqualizer(48000)
 
@@ -696,87 +699,86 @@ class DynamicsProcessingManager(
                 }
 
         /*
-         * Conversion is completed BEFORE crossing the Handler
-         * boundary.
+         * IMPORTANT:
+         *
+         * convertInterleaved() returns InterleavedBands,
+         * while convertFeatureAware() returns ConvertedBands.
+         *
+         * Do NOT store either result in a common `val converted`,
+         * because Kotlin then infers Any and the fields disappear.
+         *
+         * Extract the four FloatArray values explicitly here.
          */
-        val converted =
-            if (useInterleave) {
-                ParametricToDpConverter
-                    .convertInterleaved(eq)
-            } else {
-                ParametricToDpConverter
-                    .convertFeatureAware(eq)
-            }
+        val preCutoffs: FloatArray
+        val preGains: FloatArray
+        val postCutoffs: FloatArray?
+        val postGains: FloatArray?
+
+        if (useInterleave) {
+            val converted:
+                ParametricToDpConverter.InterleavedBands =
+                ParametricToDpConverter.convertInterleaved(eq)
+
+            preCutoffs = converted.preCutoffs
+            preGains = converted.preGains
+            postCutoffs = converted.postCutoffs
+            postGains = converted.postGains
+        } else {
+            val converted:
+                ParametricToDpConverter.ConvertedBands =
+                ParametricToDpConverter.convertFeatureAware(eq)
+
+            preCutoffs = converted.cutoffs
+            preGains = converted.gains
+            postCutoffs = null
+            postGains = null
+        }
 
         /*
-         * Take explicit snapshots.
-         *
-         * Nothing from 'converted' is accessed by the Runnable.
+         * Explicit FloatArray types prevent Kotlin from losing the
+         * array type during inference.
          */
-        val preCutoffSource =
-            converted.cutoffs
-
-        val preGainSource =
-            converted.gains
-
-        val postCutoffSource =
-            if (useInterleave) {
-                converted.postCutoffs
-            } else {
-                null
-            }
-
-        val postGainSource =
-            if (useInterleave) {
-                converted.postGains
-            } else {
-                null
-            }
-
-        val bandCount =
+        val bandCount: Int =
             minOf(
                 physicalCount,
-                preCutoffSource.size,
-                preGainSource.size
+                preCutoffs.size,
+                preGains.size
             )
 
         if (bandCount <= 0) return
 
-        /*
-         * These four values are the ONLY values captured by the
-         * asynchronous Runnable.
-         */
-        val finalPreCutoffs =
-            preCutoffSource.copyOf(bandCount)
+        val finalPreCutoffs: FloatArray =
+            preCutoffs.copyOf(bandCount)
 
-        val finalPreGains =
-            preGainSource.copyOf(bandCount)
+        val finalPreGains: FloatArray =
+            preGains.copyOf(bandCount)
 
-        val finalPostCutoffs =
+        val finalPostCutoffs: FloatArray? =
             if (
-                postCutoffSource != null &&
-                postGainSource != null &&
-                postCutoffSource.size >= bandCount &&
-                postGainSource.size >= bandCount
+                postCutoffs != null &&
+                postGains != null &&
+                postCutoffs.size >= bandCount &&
+                postGains.size >= bandCount
             ) {
-                postCutoffSource.copyOf(bandCount)
+                postCutoffs.copyOf(bandCount)
             } else {
                 null
             }
 
-        val finalPostGains =
+        val finalPostGains: FloatArray? =
             if (
-                postCutoffSource != null &&
-                postGainSource != null &&
-                postCutoffSource.size >= bandCount &&
-                postGainSource.size >= bandCount
+                postCutoffs != null &&
+                postGains != null &&
+                postCutoffs.size >= bandCount &&
+                postGains.size >= bandCount
             ) {
-                postGainSource.copyOf(bandCount)
+                postGains.copyOf(bandCount)
             } else {
                 null
             }
 
-        val writeEnabled = enabled
+        val writeEnabled: Boolean =
+            enabled
 
         val job =
             Runnable {
@@ -790,8 +792,11 @@ class DynamicsProcessingManager(
                         return@Runnable
                     }
 
+                    val channelCount =
+                        dp.channelCountSafe()
+
                     for (
-                        channel in 0 until dp.channelCountSafe()
+                        channel in 0 until channelCount
                     ) {
                         val preStage =
                             DynamicsProcessing.Eq(
@@ -801,20 +806,26 @@ class DynamicsProcessingManager(
                             )
 
                         for (i in 0 until bandCount) {
+                            val cutoff: Float =
+                                finalPreCutoffs[i]
+                                    .coerceIn(
+                                        MIN_CUTOFF_HZ,
+                                        MAX_CUTOFF_HZ
+                                    )
+
+                            val gain: Float =
+                                finalPreGains[i]
+                                    .coerceIn(
+                                        -15f,
+                                        15f
+                                    )
+
                             preStage.setBand(
                                 i,
                                 DynamicsProcessing.EqBand(
                                     writeEnabled,
-                                    finalPreCutoffs[i]
-                                        .coerceIn(
-                                            MIN_CUTOFF_HZ,
-                                            MAX_CUTOFF_HZ
-                                        ),
-                                    finalPreGains[i]
-                                        .coerceIn(
-                                            -15f,
-                                            15f
-                                        )
+                                    cutoff,
+                                    gain
                                 )
                             )
                         }
@@ -824,9 +835,15 @@ class DynamicsProcessingManager(
                             preStage
                         )
 
+                        val postCuts =
+                            finalPostCutoffs
+
+                        val postGs =
+                            finalPostGains
+
                         if (
-                            finalPostCutoffs != null &&
-                            finalPostGains != null
+                            postCuts != null &&
+                            postGs != null
                         ) {
                             val postStage =
                                 DynamicsProcessing.Eq(
@@ -836,20 +853,26 @@ class DynamicsProcessingManager(
                                 )
 
                             for (i in 0 until bandCount) {
+                                val cutoff: Float =
+                                    postCuts[i]
+                                        .coerceIn(
+                                            MIN_CUTOFF_HZ,
+                                            MAX_CUTOFF_HZ
+                                        )
+
+                                val gain: Float =
+                                    postGs[i]
+                                        .coerceIn(
+                                            -15f,
+                                            15f
+                                        )
+
                                 postStage.setBand(
                                     i,
                                     DynamicsProcessing.EqBand(
                                         writeEnabled,
-                                        finalPostCutoffs[i]
-                                            .coerceIn(
-                                                MIN_CUTOFF_HZ,
-                                                MAX_CUTOFF_HZ
-                                            ),
-                                        finalPostGains[i]
-                                            .coerceIn(
-                                                -15f,
-                                                15f
-                                            )
+                                        cutoff,
+                                        gain
                                     )
                                 )
                             }
@@ -881,7 +904,7 @@ class DynamicsProcessingManager(
 
         pendingEqWrite = job
 
-        val delay =
+        val delay: Long =
             (
                 lastEqWriteMs +
                     MIN_EQ_WRITE_SPACING_MS -
@@ -944,7 +967,8 @@ class DynamicsProcessingManager(
                 for (
                     bandIndex in 0 until mdrcCount
                 ) {
-                    val source =
+                    val source:
+                        MdrcBandConfig =
                         requestedBands.getOrElse(
                             bandIndex
                         ) {
@@ -982,7 +1006,8 @@ class DynamicsProcessingManager(
         bands: List<MdrcBandConfig>
     ): List<MdrcBandConfig> {
 
-        val source =
+        val source:
+            List<MdrcBandConfig> =
             if (bands.isEmpty()) {
                 DspConfig.defaultMdrcBands()
             } else {
@@ -999,7 +1024,8 @@ class DynamicsProcessingManager(
         for (
             index in 0 until MDRC_BAND_COUNT
         ) {
-            val input =
+            val input:
+                MdrcBandConfig =
                 source.getOrNull(index)
                     ?: defaultMdrcBand(index)
 
@@ -1035,7 +1061,8 @@ class DynamicsProcessingManager(
                             maximum
                         )
 
-            val normalized =
+            val normalized:
+                MdrcBandConfig =
                 input.copy(
                     cutoffFrequencyHz = cutoff,
 

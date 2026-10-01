@@ -62,6 +62,8 @@ class DynamicsProcessingManager(
     private var effect: DynamicsProcessing? = null
     private var eqBandCount: Int = 0
     private var initialized = false
+    /** True when the live DP was created with both Pre-EQ and Post-EQ stages. */
+    @Volatile private var interleaveEnabled = false
 
     // Equalizer314-style asynchronous DP writer: graph changes are converted
     // once, then the complete EQ stage is swapped atomically on a worker.
@@ -92,52 +94,92 @@ class DynamicsProcessingManager(
 
     private fun initialize() {
         if (initialized) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
 
-        try {
-            val config = createInitialConfig()
+        var lastError: Throwable? = null
 
-            val dp = DynamicsProcessing(
-                PRIORITY,
-                audioSessionId,
-                config
-            )
+        // The constructor is the real capability test. A Config.Builder can
+        // succeed even when the vendor effect later rejects a stage/count.
+        // Therefore try Equalizer314's interleaved method first and only then
+        // fall back to fewer bands or a single EQ stage.
+        for ((config, requestedInterleave) in createInitialConfigs()) {
+            try {
+                val dp = DynamicsProcessing(PRIORITY, audioSessionId, config)
 
-            dp.setControlStatusListener { _, hasControl ->
+                dp.setControlStatusListener { _, hasControl ->
+                    Log.i(
+                        TAG,
+                        "DynamicsProcessing control changed: hasControl=$hasControl " +
+                            "session=$audioSessionId"
+                    )
+                    if (!hasControl) onControlLost?.invoke()
+                }
+
+                dp.setEnabled(true)
+                effect = dp
+                initialized = true
+                refreshEqBackendInfo(dp)
+
+                // Use the actual live configuration, not only the requested one.
+                interleaveEnabled = requestedInterleave && try {
+                    dp.getConfig().postEqBandCount == dp.getConfig().preEqBandCount &&
+                        dp.getConfig().postEqBandCount > 0
+                } catch (_: Throwable) { false }
+
                 Log.i(
                     TAG,
-                    "DynamicsProcessing control changed: " +
-                        "hasControl=$hasControl session=$audioSessionId"
+                    "DynamicsProcessing initialized: session=$audioSessionId " +
+                        "preEq=$eqBandCount postEq=${try { dp.getConfig().postEqBandCount } catch (_: Throwable) { 0 }} " +
+                        "interleave=$interleaveEnabled channels=${dp.channelCountSafe()}"
                 )
+                logEqBackendMap(dp)
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                effect = null
+                initialized = false
+                interleaveEnabled = false
+                Log.w(
+                    TAG,
+                    "DynamicsProcessing rejected config: " +
+                        "pre=${config.preEqBandCount} post=${config.postEqBandCount} " +
+                        "interleave=$requestedInterleave",
+                    t
+                )
+            }
+        }
 
-                if (!hasControl) {
-                    onControlLost?.invoke()
+        Log.e(
+            TAG,
+            "Unable to initialize DynamicsProcessing for session=$audioSessionId",
+            lastError
+        )
+        releaseInternal()
+    }
+
+    private fun createInitialConfigs(): List<Pair<DynamicsProcessing.Config, Boolean>> {
+        val result = mutableListOf<Pair<DynamicsProcessing.Config, Boolean>>()
+        val bandCandidates = intArrayOf(REQUESTED_EQ_BANDS, FALLBACK_EQ_BANDS_127, FALLBACK_EQ_BANDS_32)
+
+        for (interleaveCandidate in booleanArrayOf(true, false)) {
+            for (bandCount in bandCandidates) {
+                try {
+                    val config = DynamicsProcessing.Config.Builder(
+                        DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                        CHANNEL_COUNT,
+                        true, bandCount,
+                        true, MDRC_BAND_COUNT,
+                        interleaveCandidate, if (interleaveCandidate) bandCount else 0,
+                        true
+                    ).setPreferredFrameDuration(DP_FRAME_DURATION_MS).build()
+
+                    result += config to interleaveCandidate
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Could not build DP config pre=$bandCount interleave=$interleaveCandidate", e)
                 }
             }
-
-            dp.setEnabled(true)
-
-            effect = dp
-            initialized = true
-            refreshEqBackendInfo(dp)
-
-            Log.i(
-                TAG,
-                "DynamicsProcessing initialized: " +
-                    "session=$audioSessionId eqBands=$eqBandCount " +
-                    "channels=${dp.channelCountSafe()}"
-            )
-            logEqBackendMap(dp)
-
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "Unable to initialize DynamicsProcessing " +
-                    "for session=$audioSessionId",
-                e
-            )
-
-            releaseInternal()
         }
+        return result
     }
 
     /**
@@ -206,59 +248,6 @@ class DynamicsProcessingManager(
         }
     }
 
-    private fun createInitialConfig(): DynamicsProcessing.Config {
-        val candidates = intArrayOf(
-            REQUESTED_EQ_BANDS,
-            FALLBACK_EQ_BANDS_127,
-            FALLBACK_EQ_BANDS_32
-        )
-
-        var lastError: Exception? = null
-
-        for (bandCount in candidates) {
-            try {
-                val builder = DynamicsProcessing.Config.Builder(
-                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-                    CHANNEL_COUNT,
-                    true,
-                    bandCount,
-                    true,
-                    MDRC_BAND_COUNT,
-                    false,
-                    0,
-                    true
-                )
-
-                builder.setPreferredFrameDuration(DP_FRAME_DURATION_MS)
-                val config = builder.build()
-
-                eqBandCount = bandCount
-
-                Log.i(
-                    TAG,
-                    "DynamicsProcessing config created: " +
-                        "EQ=$bandCount MDRC=$MDRC_BAND_COUNT"
-                )
-
-                return config
-
-            } catch (e: Exception) {
-                lastError = e
-
-                Log.w(
-                    TAG,
-                    "Unable to create DynamicsProcessing " +
-                        "config with EQ=$bandCount",
-                    e
-                )
-            }
-        }
-
-        throw IllegalStateException(
-            "Unable to create DynamicsProcessing configuration",
-            lastError
-        )
-    }
 
     /**
      * Update one MDRC band without rebuilding the rest of the DSP chain.
@@ -457,8 +446,12 @@ class DynamicsProcessingManager(
         }
     }
 
-    /** Builds the 32-band sBz graphic curve as parametric bells and renders it
-     * into the high-resolution DynamicsProcessing Pre-EQ stage. */
+    /**
+     * Builds the 32-band sBz graphic curve using the Equalizer314 method:
+     * parametric Biquad response -> interleaved PRE/POST DynamicsProcessing
+     * stages. Each stage receives half of the fitted response, with POST
+     * frequencies offset between PRE frequencies.
+     */
     private fun applyPreEq(dp: DynamicsProcessing, config: DspConfig) {
         applyParametricEq(config, freezeLayout = true)
     }
@@ -468,27 +461,22 @@ class DynamicsProcessingManager(
         val physicalCount = try { dp.getConfig().preEqBandCount } catch (_: Exception) { return }
         if (physicalCount <= 0) return
 
-        // The converter is the Equalizer314 core: the 32 user bands become a
-        // parametric response first, then are fitted to the DP band layout.
         ParametricToDpConverter.setNumBands(physicalCount)
         ParametricToDpConverter.deviceSampleRateHz = 48000f
 
         val eq = ParametricEqualizer(48000)
         eq.clearBands()
         val enabled = config.isEnabled
-        val source = DspConfig.FREQUENCIES
-        for (index in source.indices) {
+        for (index in DspConfig.FREQUENCIES.indices) {
             eq.addBand(
-                frequency = source[index],
+                frequency = DspConfig.FREQUENCIES[index],
                 gain = if (enabled) config.eqGains.getOrElse(index) { 0f }.coerceIn(-15f, 15f) else 0f,
                 filterType = BiquadFilter.FilterType.BELL,
                 q = 4.318
             )
         }
 
-        // Tone/Bass Boost remain part of the same parametric response, so the
-        // converter can fit the complete curve instead of stacking unrelated
-        // native EQ stages.
+        // Preserve sBz's tone/bass controls inside the same parametric curve.
         if (enabled) {
             if (config.toneBassDb != 0f) eq.addBand(120f, config.toneBassDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
             if (config.toneMidDb != 0f) eq.addBand(1000f, config.toneMidDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
@@ -501,12 +489,34 @@ class DynamicsProcessingManager(
         eq.isEnabled = enabled
 
         ParametricToDpConverter.layoutFrozen = freezeLayout
-        val converted = ParametricToDpConverter.convertFeatureAware(eq)
-        val n = minOf(physicalCount, converted.cutoffs.size)
+        val useInterleave = interleaveEnabled && try { dp.getConfig().postEqBandCount == physicalCount } catch (_: Exception) { false }
+
+        val preCutoffs: FloatArray
+        val preGains: FloatArray
+        val postCutoffs: FloatArray?
+        val postGains: FloatArray?
+        if (useInterleave) {
+            val converted = ParametricToDpConverter.convertInterleaved(eq)
+            preCutoffs = converted.cutoffs
+            preGains = converted.gains
+            postCutoffs = converted.postCutoffs
+            postGains = converted.postGains
+        } else {
+            val converted = ParametricToDpConverter.convertFeatureAware(eq)
+            preCutoffs = converted.cutoffs
+            preGains = converted.gains
+            postCutoffs = null
+            postGains = null
+        }
+
+        val n = minOf(physicalCount, preCutoffs.size, preGains.size)
         if (n <= 0) return
 
-        val cutoffs = converted.cutoffs.copyOf(n)
-        val gains = converted.gains.copyOf(n)
+        val cutoffs = preCutoffs.copyOf(n)
+        val gains = preGains.copyOf(n)
+        val post = if (postCutoffs != null && postGains != null && postCutoffs.size >= n && postGains.size >= n) {
+            postCutoffs.copyOf(n) to postGains.copyOf(n)
+        } else null
         val writeEnabled = enabled
 
         val job = Runnable {
@@ -516,12 +526,10 @@ class DynamicsProcessingManager(
                     return@Runnable
                 }
 
-                // One complete stage transaction per channel, matching the
-                // proven Equalizer314 update model.
                 for (channel in 0 until dp.channelCountSafe()) {
-                    val eqStage = DynamicsProcessing.Eq(true, true, n)
+                    val preStage = DynamicsProcessing.Eq(true, true, n)
                     for (i in 0 until n) {
-                        eqStage.setBand(
+                        preStage.setBand(
                             i,
                             DynamicsProcessing.EqBand(
                                 writeEnabled,
@@ -530,8 +538,24 @@ class DynamicsProcessingManager(
                             )
                         )
                     }
-                    dp.setPreEqByChannelIndex(channel, eqStage)
+                    dp.setPreEqByChannelIndex(channel, preStage)
+
+                    if (post != null) {
+                        val postStage = DynamicsProcessing.Eq(true, true, n)
+                        for (i in 0 until n) {
+                            postStage.setBand(
+                                i,
+                                DynamicsProcessing.EqBand(
+                                    writeEnabled,
+                                    post.first[i].coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ),
+                                    post.second[i].coerceIn(-15f, 15f)
+                                )
+                            )
+                        }
+                        dp.setPostEqByChannelIndex(channel, postStage)
+                    }
                 }
+
                 lastEqWriteMs = android.os.SystemClock.uptimeMillis()
             } catch (e: Throwable) {
                 Log.e(TAG, "High-resolution EQ write failed", e)
@@ -547,10 +571,9 @@ class DynamicsProcessingManager(
         eqWorker.postDelayed(job, delay)
     }
 
-    /** Post-EQ is intentionally unused: the graphic EQ is rendered once in Pre-EQ. */
+    /** The graphic EQ is already rendered by applyParametricEq into PRE/POST. */
     private fun applyGraphicEq(dp: DynamicsProcessing, config: DspConfig) {
-        // No second EQ stage: avoiding a second effect stage prevents double-EQ and
-        // also avoids touching an unallocated Post-EQ stage on vendor HALs.
+        // Intentionally empty: avoids a second curve being stacked on top.
     }
 
     /**
@@ -1033,6 +1056,7 @@ class DynamicsProcessingManager(
         effect = null
         initialized = false
         eqBandCount = 0
+        interleaveEnabled = false
         pendingEqWrite?.let { eqWorker.removeCallbacks(it) }
         pendingEqWrite = null
         eqWorkerThread.quitSafely()

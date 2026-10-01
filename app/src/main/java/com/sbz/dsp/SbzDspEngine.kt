@@ -21,7 +21,7 @@ class SbzDspEngine {
     private data class SessionPipeline(
         val dynamicsProcessing: DynamicsProcessingManager,
         val virtualizer: VirtualizerManager,
-        val hallReverb: HallReverbManager,
+        val hallReverb: HallReverbManager
     )
 
     private val pipelines = ConcurrentHashMap<Int, SessionPipeline>()
@@ -78,6 +78,7 @@ class SbzDspEngine {
             }
             val virtManager = VirtualizerManager(sessionId)
             val hallManager = HallReverbManager(sessionId)
+
             val pipeline = SessionPipeline(dpManager, virtManager, hallManager)
             pipelines[sessionId] = pipeline
 
@@ -244,7 +245,7 @@ class SbzDspEngine {
                 pipeline.dynamicsProcessing.release()
                 pipeline.virtualizer.release()
                 pipeline.hallReverb.release()
-            } catch (e: Exception) {
+                } catch (e: Exception) {
                 Log.w(TAG, "Error stopping session $sessionId: ${e.message}")
             }
         }

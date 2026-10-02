@@ -27,20 +27,25 @@ class VirtualizerManager(
     init {
         if (audioSessionId == GLOBAL_SESSION_ID) {
             Log.i(TAG, "Virtualizer disabled for global session 0")
-            return
-        }
-
-        try {
-            virtualizer = Virtualizer(PRIORITY, audioSessionId).also { v ->
-                if (v.strengthSupported) {
-                    Log.d(TAG, "Virtualizer initialized for session $audioSessionId")
-                } else {
-                    Log.w(TAG, "Virtualizer strength parameter not supported on session $audioSessionId")
+        } else {
+            try {
+                virtualizer = Virtualizer(PRIORITY, audioSessionId).also { v ->
+                    if (v.strengthSupported) {
+                        Log.d(TAG, "Virtualizer initialized for session $audioSessionId")
+                    } else {
+                        Log.w(
+                            TAG,
+                            "Virtualizer strength parameter not supported on session $audioSessionId"
+                        )
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(
+                    TAG,
+                    "Could not initialize Virtualizer on session $audioSessionId: ${e.message}"
+                )
+                virtualizer = null
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not initialize Virtualizer on session $audioSessionId: ${e.message}")
-            virtualizer = null
         }
     }
 

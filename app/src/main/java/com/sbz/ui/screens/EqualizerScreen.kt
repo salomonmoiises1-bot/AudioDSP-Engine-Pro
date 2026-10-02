@@ -3,6 +3,7 @@ package com.sbz.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,12 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -61,11 +62,6 @@ fun EqualizerScreen(
             .background(SbzBackground)
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-
-        // ============================================================
-        // CABECERA RETRO-DIGITAL
-        // ============================================================
-
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -79,17 +75,10 @@ fun EqualizerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = 10.dp,
-                        vertical = 7.dp
-                    ),
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "sBz // GRAPHIC EQ",
                         fontFamily = FontFamily.Monospace,
@@ -97,9 +86,7 @@ fun EqualizerScreen(
                         fontWeight = FontWeight.Bold,
                         color = SbzCyan
                     )
-
                     Spacer(modifier = Modifier.height(2.dp))
-
                     Text(
                         text = "32 BANDAS · ISO · DIGITAL SIGNAL PROCESSOR",
                         fontFamily = FontFamily.Monospace,
@@ -108,10 +95,7 @@ fun EqualizerScreen(
                     )
                 }
 
-                Column(
-                    horizontalAlignment = Alignment.End
-                ) {
-
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "EQ32",
                         fontFamily = FontFamily.Monospace,
@@ -119,7 +103,6 @@ fun EqualizerScreen(
                         fontWeight = FontWeight.Bold,
                         color = SbzCyan
                     )
-
                     Text(
                         text = "ACTIVE",
                         fontFamily = FontFamily.Monospace,
@@ -132,10 +115,6 @@ fun EqualizerScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // ============================================================
-        // ANALIZADOR / CURVA
-        // ============================================================
-
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -147,19 +126,16 @@ fun EqualizerScreen(
             shape = RoundedCornerShape(6.dp),
             color = SbzBackground
         ) {
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(6.dp)
             ) {
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-
                     Text(
                         text = "RESPONSE CURVE",
                         fontFamily = FontFamily.Monospace,
@@ -167,7 +143,6 @@ fun EqualizerScreen(
                         fontWeight = FontWeight.Bold,
                         color = SbzCyan
                     )
-
                     Text(
                         text = "±12 dB",
                         fontFamily = FontFamily.Monospace,
@@ -192,33 +167,21 @@ fun EqualizerScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // ============================================================
-        // INFORMACIÓN + RESET
-        // ============================================================
-
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(5.dp),
             color = SbzBackground
         ) {
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = 8.dp,
-                        vertical = 5.dp
-                    ),
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
                 val maxGain = config.eqGains.maxOrNull() ?: 0f
                 val minGain = config.eqGains.minOrNull() ?: 0f
 
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "BAND CONTROL",
                         fontFamily = FontFamily.Monospace,
@@ -226,7 +189,6 @@ fun EqualizerScreen(
                         fontWeight = FontWeight.Bold,
                         color = SbzCyan
                     )
-
                     Text(
                         text = "MAX %+.1f dB   MIN %+.1f dB   STEP 0.5 dB"
                             .format(maxGain, minGain),
@@ -237,9 +199,7 @@ fun EqualizerScreen(
                 }
 
                 OutlinedButton(
-                    onClick = {
-                        viewModel.resetEq()
-                    },
+                    onClick = { viewModel.resetEq() },
                     shape = RoundedCornerShape(4.dp),
                     contentPadding = PaddingValues(
                         horizontal = 8.dp,
@@ -248,22 +208,14 @@ fun EqualizerScreen(
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = SbzCyan
                     ),
-                    border = BorderStroke(
-                        1.dp,
-                        SbzBorder
-                    )
+                    border = BorderStroke(1.dp, SbzBorder)
                 ) {
-
                     Icon(
                         imageVector = Icons.Default.RestartAlt,
                         contentDescription = "Plano",
                         modifier = Modifier.size(13.dp)
                     )
-
-                    Spacer(
-                        modifier = Modifier.width(3.dp)
-                    )
-
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "FLAT",
                         fontFamily = FontFamily.Monospace,
@@ -276,151 +228,44 @@ fun EqualizerScreen(
 
         Spacer(modifier = Modifier.height(5.dp))
 
-        // ============================================================
-        // BANCO DE 32 FADERS
-        //
-        // 4 bancos de 8.
-        // Cada banco funciona como un módulo del hardware.
-        // ============================================================
-
-        Column(
+        /*
+         * EQ32 EN UNA SOLA LINEA
+         *
+         * Las 32 bandas permanecen en una única fila.
+         * La fila tiene scroll horizontal para no sacrificar
+         * legibilidad en pantallas pequeñas.
+         */
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .weight(1f)
+                .border(
+                    BorderStroke(1.dp, SbzBorder),
+                    RoundedCornerShape(5.dp)
+                ),
+            shape = RoundedCornerShape(5.dp),
+            color = SbzBackground
         ) {
-
-            EqBandGroup(
-                frequencies = frequencies,
-                gains = config.eqGains,
-                startIndex = 0,
-                endIndex = 8,
-                groupNumber = "01",
-                onGainChanged = viewModel::setBandGain,
-                modifier = Modifier.weight(1f)
-            )
-
-            EqBandGroup(
-                frequencies = frequencies,
-                gains = config.eqGains,
-                startIndex = 8,
-                endIndex = 16,
-                groupNumber = "02",
-                onGainChanged = viewModel::setBandGain,
-                modifier = Modifier.weight(1f)
-            )
-
-            EqBandGroup(
-                frequencies = frequencies,
-                gains = config.eqGains,
-                startIndex = 16,
-                endIndex = 24,
-                groupNumber = "03",
-                onGainChanged = viewModel::setBandGain,
-                modifier = Modifier.weight(1f)
-            )
-
-            EqBandGroup(
-                frequencies = frequencies,
-                gains = config.eqGains,
-                startIndex = 24,
-                endIndex = 32,
-                groupNumber = "04",
-                onGainChanged = viewModel::setBandGain,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun EqBandGroup(
-    frequencies: List<Float>,
-    gains: List<Float>,
-    startIndex: Int,
-    endIndex: Int,
-    groupNumber: String,
-    onGainChanged: (Int, Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(
-                BorderStroke(1.dp, SbzBorder),
-                RoundedCornerShape(5.dp)
-            ),
-        shape = RoundedCornerShape(5.dp),
-        color = SbzBackground
-    ) {
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    horizontal = 5.dp,
-                    vertical = 3.dp
-                )
-        ) {
-
-            // --------------------------------------------------------
-            // CABECERA DEL MÓDULO
-            // --------------------------------------------------------
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-
-                Text(
-                    text = "BANK $groupNumber",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SbzCyan
-                )
-
-                Text(
-                    text = "%02d—%02d".format(
-                        startIndex + 1,
-                        endIndex
-                    ),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 7.sp,
-                    color = SbzTextSecondary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(1.dp))
-
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp, vertical = 5.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
-                for (index in startIndex until endIndex) {
-
-                    val frequency = frequencies.getOrElse(index) {
-                        0f
-                    }
-
-                    val gain = gains.getOrElse(index) {
-                        0f
-                    }
+                for (index in frequencies.indices) {
+                    val frequency = frequencies[index]
+                    val gain = config.eqGains.getOrElse(index) { 0f }
 
                     EqBandControl(
                         frequencyHz = frequency,
                         gainDb = gain,
-                        onGainChanged = {
-                            onGainChanged(index, it)
+                        onGainChanged = { value ->
+                            viewModel.setBandGain(index, value)
                         },
                         modifier = Modifier
-                            .weight(1f)
+                            .width(34.dp)
                             .fillMaxHeight()
                     )
                 }
@@ -436,34 +281,21 @@ private fun EqBandControl(
     onGainChanged: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-
-        // ------------------------------------------------------------
-        // VALOR
-        // ------------------------------------------------------------
-
         Text(
             text = "%+.1f".format(gainDb),
             fontFamily = FontFamily.Monospace,
-            fontSize = 8.sp,
+            fontSize = 7.sp,
             fontWeight = FontWeight.Bold,
-            color = if (gainDb != 0f) {
-                SbzCyan
-            } else {
-                SbzTextSecondary
-            }
+            color = if (gainDb != 0f) SbzCyan else SbzTextSecondary,
+            maxLines = 1
         )
 
-        Spacer(modifier = Modifier.height(1.dp))
-
-        // ------------------------------------------------------------
-        // FADER
-        // ------------------------------------------------------------
+        Spacer(modifier = Modifier.height(2.dp))
 
         Box(
             modifier = Modifier
@@ -471,31 +303,22 @@ private fun EqBandControl(
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-
             Slider(
                 value = gainDb.coerceIn(-12f, 12f),
-
                 onValueChange = { value ->
-
-                    val stepped =
-                        (round(value * 2f) / 2f)
-                            .coerceIn(-12f, 12f)
+                    val stepped = (round(value * 2f) / 2f)
+                        .coerceIn(-12f, 12f)
 
                     if (stepped != gainDb) {
                         onGainChanged(stepped)
                     }
                 },
-
                 valueRange = -12f..12f,
-
-                // 48 intervalos de 0,5 dB.
                 steps = 47,
-
                 modifier = Modifier
-                    .width(115.dp)
-                    .height(27.dp)
+                    .width(145.dp)
+                    .height(24.dp)
                     .rotate(-90f),
-
                 colors = SliderDefaults.colors(
                     thumbColor = SbzCyan,
                     activeTrackColor = SbzCyan,
@@ -506,16 +329,12 @@ private fun EqBandControl(
             )
         }
 
-        Spacer(modifier = Modifier.height(1.dp))
-
-        // ------------------------------------------------------------
-        // FRECUENCIA
-        // ------------------------------------------------------------
+        Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = formatFrequency(frequencyHz),
             fontFamily = FontFamily.Monospace,
-            fontSize = 7.sp,
+            fontSize = 6.sp,
             fontWeight = FontWeight.Bold,
             color = SbzTextSecondary,
             maxLines = 1
@@ -523,15 +342,10 @@ private fun EqBandControl(
     }
 }
 
-private fun formatFrequency(
-    frequencyHz: Float
-): String {
-
+private fun formatFrequency(frequencyHz: Float): String {
     return when {
-
         frequencyHz >= 1000f -> {
             val khz = frequencyHz / 1000f
-
             if (khz >= 10f) {
                 "%.0fk".format(khz)
             } else {
@@ -539,12 +353,6 @@ private fun formatFrequency(
             }
         }
 
-        frequencyHz >= 100f -> {
-            "%.0f".format(frequencyHz)
-        }
-
-        else -> {
-            "%.0f".format(frequencyHz)
-        }
+        else -> "%.0f".format(frequencyHz)
     }
 }

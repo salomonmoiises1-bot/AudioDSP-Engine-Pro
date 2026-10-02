@@ -1,5 +1,6 @@
 package com.sbz.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sbz.dsp.SbzDspEngine
 import com.sbz.dsp.model.DspConfig
 import com.sbz.dsp.model.Preset
 import com.sbz.ui.MainViewModel
@@ -40,17 +42,24 @@ fun DashboardScreen(
     val presets by viewModel.presets.collectAsState()
     val selectedPresetId by viewModel.selectedPresetId.collectAsState()
 
-    val currentPreset = presets.find { it.id == selectedPresetId }?.name ?: "Personalizado"
+    val currentPreset =
+        presets.find { it.id == selectedPresetId }?.name ?: "Personalizado"
+
     val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(SbzBackground)
             .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        // Master Power / Bypass Hero Card
+
+        // ============================================================
+        // SBZ DSP STATUS
+        // ============================================================
+
         MasterStatusCard(
             isEnabled = config.isEnabled,
             engineStatus = engineStatus,
@@ -60,7 +69,10 @@ fun DashboardScreen(
             onOpenPresets = onOpenPresets
         )
 
-        // Master Output Level & Balance Section
+        // ============================================================
+        // MASTER OUTPUT
+        // ============================================================
+
         MasterGainSection(
             masterGainDb = config.masterGainDb,
             balance = config.balance,
@@ -69,7 +81,10 @@ fun DashboardScreen(
             onBalanceChange = { viewModel.setBalance(it) }
         )
 
-        // Quick Preset Selector Row
+        // ============================================================
+        // PRESETS
+        // ============================================================
+
         QuickPresetsRow(
             presets = presets,
             selectedId = selectedPresetId,
@@ -77,16 +92,26 @@ fun DashboardScreen(
             onManageAll = onOpenPresets
         )
 
-        // 3-Band Tone Quick Control Section
+        // ============================================================
+        // TONO
+        // ============================================================
+
         ToneQuickSection(
             bass = config.toneBassDb,
             mid = config.toneMidDb,
             treble = config.toneTrebleDb,
-            onToneChange = { b, m, t -> viewModel.setTone(b, m, t) },
-            onExpand = { onNavigateToTab(2) }
+            onToneChange = { b, m, t ->
+                viewModel.setTone(b, m, t)
+            },
+            onExpand = {
+                onNavigateToTab(2)
+            }
         )
 
-        // DSP Pipeline Stages Overview Grid
+        // ============================================================
+        // DSP MODULES
+        // ============================================================
+
         DspStagesGrid(
             config = config,
             onNavigateToTab = onNavigateToTab
@@ -97,124 +122,239 @@ fun DashboardScreen(
 @Composable
 private fun MasterStatusCard(
     isEnabled: Boolean,
-    engineStatus: com.sbz.dsp.SbzDspEngine.EngineStatus,
+    engineStatus: SbzDspEngine.EngineStatus,
     currentPresetName: String,
     onToggle: () -> Unit,
     onReclaim: () -> Unit,
     onOpenPresets: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SbzCardBg),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (isEnabled) SbzCyan.copy(alpha = 0.4f) else SbzBorder)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (isEnabled) {
+                        SbzCyan.copy(alpha = 0.65f)
+                    } else {
+                        SbzBorder
+                    }
+                ),
+                RoundedCornerShape(7.dp)
+            ),
+        shape = RoundedCornerShape(7.dp),
+        color = SbzCardBg
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+
+        Column(
+            modifier = Modifier.padding(10.dp)
+        ) {
+
+            // --------------------------------------------------------
+            // HEADER
+            // --------------------------------------------------------
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
                     Text(
-                        text = "SBZ NATIVE DSP",
-                        fontSize = 12.sp,
+                        text = "sBz // NATIVE DSP",
                         fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isEnabled) SbzCyan else SbzTextSecondary
+                        color = if (isEnabled) {
+                            SbzCyan
+                        } else {
+                            SbzTextSecondary
+                        }
                     )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
                     Text(
-                        text = if (isEnabled) "Motor activo" else "Omitido",
-                        fontSize = 20.sp,
+                        text = if (isEnabled) {
+                            "PROCESSING ACTIVE"
+                        } else {
+                            "PROCESSING BYPASSED"
+                        },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = SbzTextPrimary
                     )
                 }
 
-                // Power Toggle Button
                 FilledIconButton(
                     onClick = onToggle,
-                    modifier = Modifier.size(54.dp),
+                    modifier = Modifier.size(48.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (isEnabled) SbzCyan else SbzSurfaceVariant,
-                        contentColor = if (isEnabled) SbzBackground else SbzTextDisabled
+                        containerColor = if (isEnabled) {
+                            SbzCyan
+                        } else {
+                            SbzSurfaceVariant
+                        },
+                        contentColor = if (isEnabled) {
+                            SbzBackground
+                        } else {
+                            SbzTextDisabled
+                        }
                     )
                 ) {
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = "Omitir procesamiento principal",
-                        modifier = Modifier.size(28.dp)
+                        contentDescription = "Activar o desactivar DSP",
+                        modifier = Modifier.size(25.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Hardware Engine Status Row
+            // --------------------------------------------------------
+            // ENGINE STATUS DISPLAY
+            // --------------------------------------------------------
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                color = SbzSurface
+            ) {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 8.dp,
+                            vertical = 7.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (engineStatus.isRunning) {
+                                    SbzGreen
+                                } else {
+                                    SbzRed
+                                }
+                            )
+                    )
+
+                    Spacer(modifier = Modifier.width(7.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+
+                        Text(
+                            text = "GLOBAL SESSION 0",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzTextSecondary
+                        )
+
+                        Text(
+                            text = if (
+                                engineStatus.globalSessionAttached
+                            ) {
+                                "VINCULADA"
+                            } else {
+                                "INDEPENDIENTE"
+                            },
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            color = SbzTextPrimary
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+
+                        Text(
+                            text = "SESSIONS",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 7.sp,
+                            color = SbzTextSecondary
+                        )
+
+                        Text(
+                            text = engineStatus.activeSessions.size.toString(),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SbzCyan
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Text(
+                        text = "RECLAIM",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SbzAmber,
+                        modifier = Modifier.clickable {
+                            onReclaim()
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(7.dp))
+
+            // --------------------------------------------------------
+            // PRESET DISPLAY
+            // --------------------------------------------------------
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SbzSurface)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable {
+                        onOpenPresets()
+                    }
+                    .padding(
+                        horizontal = 5.dp,
+                        vertical = 4.dp
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (engineStatus.isRunning) SbzGreen else SbzRed)
-                    )
-                    Text(
-                        text = "Sesión global 0: ${if (engineStatus.globalSessionAttached) "Vinculada" else "Independiente"}",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = SbzTextSecondary
-                    )
-                }
 
                 Text(
-                    text = "Sesiones: ${engineStatus.activeSessions.size}",
-                    fontSize = 11.sp,
+                    text = "PRESET",
                     fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
                     color = SbzCyan
                 )
 
-                Text(
-                    text = "Reclaim",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SbzAmber,
-                    modifier = Modifier.clickable { onReclaim() }
-                )
-            }
+                Spacer(modifier = Modifier.width(8.dp))
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Active Preset indicator
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpenPresets() },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 Text(
-                    text = "Preset: $currentPresetName",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = SbzTextSecondary
+                    text = currentPresetName,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = SbzTextPrimary,
+                    modifier = Modifier.weight(1f)
                 )
+
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
                     tint = SbzTextSecondary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -229,39 +369,72 @@ private fun MasterGainSection(
     onMasterGainChange: (Float) -> Unit,
     onBalanceChange: (Float) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SbzCardBg),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                BorderStroke(1.dp, SbzBorder),
+                RoundedCornerShape(7.dp)
+            ),
+        shape = RoundedCornerShape(7.dp),
+        color = SbzCardBg
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+
+        Column(
+            modifier = Modifier.padding(10.dp)
+        ) {
+
+            // --------------------------------------------------------
+            // MASTER HEADER
+            // --------------------------------------------------------
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text = "MASTER OUTPUT",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SbzCyan
+                    )
+
+                    Text(
+                        text = "MAIN GAIN",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 7.sp,
+                        color = SbzTextSecondary
+                    )
+                }
+
                 Text(
-                    text = "GANANCIA DE SALIDA PRINCIPAL",
-                    fontSize = 12.sp,
+                    text = if (masterGainDb >= 0f) {
+                        "+%.1f dB".format(masterGainDb)
+                    } else {
+                        "%.1f dB".format(masterGainDb)
+                    },
                     fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = SbzTextSecondary
-                )
-                Text(
-                    text = if (masterGainDb > 0f) "+%.1f dB".format(masterGainDb) else "%.1f dB".format(masterGainDb),
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = if (masterGainDb > 0f) SbzAmber else SbzCyan
+                    color = if (masterGainDb > 0f) {
+                        SbzAmber
+                    } else {
+                        SbzCyan
+                    }
                 )
             }
 
             Slider(
-                value = masterGainDb,
+                value = masterGainDb.coerceIn(-24f, 12f),
                 onValueChange = onMasterGainChange,
                 valueRange = -24f..12f,
-                steps = 71, // 0.5 dB steps
+                steps = 71,
                 colors = SliderDefaults.colors(
                     thumbColor = SbzCyan,
                     activeTrackColor = SbzCyan,
@@ -269,23 +442,39 @@ private fun MasterGainSection(
                 )
             )
 
-            // Balance & Headroom indicators
+            // --------------------------------------------------------
+            // OUTPUT INFO
+            // --------------------------------------------------------
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 Text(
-                    text = "Balance L/R: ${if (balance == 0f) "Centro" else if (balance < 0f) "L %.0f%%".format(-balance * 100f) else "R %.0f%%".format(balance * 100f)}",
-                    fontSize = 11.sp,
-                    color = SbzTextSecondary
+                    text = when {
+                        balance == 0f -> "BALANCE  CENTER"
+                        balance < 0f ->
+                            "BALANCE  L %.0f%%"
+                                .format(-balance * 100f)
+
+                        else ->
+                            "BALANCE  R %.0f%%"
+                                .format(balance * 100f)
+                    },
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp,
+                    color = SbzTextSecondary,
+                    modifier = Modifier.weight(1f)
                 )
 
                 if (headroomComp < 0f) {
                     Text(
-                        text = "Protección: %.1f dB".format(headroomComp),
-                        fontSize = 11.sp,
+                        text = "HEADROOM %.1f dB"
+                            .format(headroomComp),
                         fontFamily = FontFamily.Monospace,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
                         color = SbzAmber
                     )
                 }
@@ -302,38 +491,71 @@ private fun QuickPresetsRow(
     onManageAll: () -> Unit
 ) {
     Column {
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+
+                Text(
+                    text = "DSP PRESET BANK",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SbzCyan
+                )
+
+                Text(
+                    text = "MEMORY / QUICK ACCESS",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 7.sp,
+                    color = SbzTextSecondary
+                )
+            }
+
             Text(
-                text = "PRESETS DSP",
-                fontSize = 12.sp,
+                text = "LIBRARY",
                 fontFamily = FontFamily.Monospace,
+                fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
-                color = SbzTextSecondary
-            )
-            Text(
-                text = "Biblioteca",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
                 color = SbzCyan,
-                modifier = Modifier.clickable { onManageAll() }
+                modifier = Modifier.clickable {
+                    onManageAll()
+                }
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+
             items(presets.take(6)) { preset ->
+
                 val isSelected = preset.id == selectedId
+
                 FilterChip(
                     selected = isSelected,
-                    onClick = { onSelect(preset) },
-                    label = { Text(preset.name, fontSize = 12.sp) },
+                    onClick = {
+                        onSelect(preset)
+                    },
+                    label = {
+                        Text(
+                            text = preset.name,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 9.sp,
+                            fontWeight = if (isSelected) {
+                                FontWeight.Bold
+                            } else {
+                                FontWeight.Normal
+                            }
+                        )
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = SbzCyanDim,
                         selectedLabelColor = Color.White,
@@ -341,7 +563,11 @@ private fun QuickPresetsRow(
                         labelColor = SbzTextSecondary
                     ),
                     border = FilterChipDefaults.filterChipBorder(
-                        borderColor = if (isSelected) SbzCyan else SbzBorder,
+                        borderColor = if (isSelected) {
+                            SbzCyan
+                        } else {
+                            SbzBorder
+                        },
                         enabled = true,
                         selected = isSelected
                     )
@@ -359,59 +585,93 @@ private fun ToneQuickSection(
     onToneChange: (Float, Float, Float) -> Unit,
     onExpand: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SbzCardBg),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                BorderStroke(1.dp, SbzBorder),
+                RoundedCornerShape(7.dp)
+            ),
+        shape = RoundedCornerShape(7.dp),
+        color = SbzCardBg
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+
+        Column(
+            modifier = Modifier.padding(10.dp)
+        ) {
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text = "TONE CONTROL",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SbzCyan
+                    )
+
+                    Text(
+                        text = "3-BAND QUICK ADJUST",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 7.sp,
+                        color = SbzTextSecondary
+                    )
+                }
+
                 Text(
-                    text = "TONO DE 3 BANDAS",
-                    fontSize = 12.sp,
+                    text = "DETAIL",
                     fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    color = SbzTextSecondary
-                )
-                Text(
-                    text = "Detalle",
-                    fontSize = 12.sp,
                     color = SbzCyan,
-                    modifier = Modifier.clickable { onExpand() }
+                    modifier = Modifier.clickable {
+                        onExpand()
+                    }
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(7.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
+
                 KnobControl(
                     value = bass,
                     range = -12f..12f,
-                    label = "Graves",
+                    label = "GRAVES",
                     unit = "dB",
-                    onValueChange = { onToneChange(it, mid, treble) }
+                    onValueChange = {
+                        onToneChange(it, mid, treble)
+                    }
                 )
+
                 KnobControl(
                     value = mid,
                     range = -12f..12f,
-                    label = "Medios",
+                    label = "MEDIOS",
                     unit = "dB",
-                    onValueChange = { onToneChange(bass, it, treble) }
+                    onValueChange = {
+                        onToneChange(bass, it, treble)
+                    }
                 )
+
                 KnobControl(
                     value = treble,
                     range = -12f..12f,
-                    label = "Agudos",
+                    label = "AGUDOS",
                     unit = "dB",
-                    onValueChange = { onToneChange(bass, mid, it) }
+                    onValueChange = {
+                        onToneChange(bass, mid, it)
+                    }
                 )
             }
         }
@@ -423,52 +683,77 @@ private fun DspStagesGrid(
     config: DspConfig,
     onNavigateToTab: (Int) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+
         Text(
-            text = "MÓDULOS DE PROCESAMIENTO",
-            fontSize = 12.sp,
+            text = "PROCESSING MODULES",
             fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = SbzTextSecondary
+            color = SbzCyan
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+
             ModuleCard(
-                title = "EQ de 32 bandas",
-                subtitle = "Filtros gráficos activos",
+                title = "EQ32",
+                subtitle = "32 BAND GRAPHIC",
                 isActive = config.isEnabled,
                 modifier = Modifier.weight(1f),
-                onClick = { onNavigateToTab(1) }
+                onClick = {
+                    onNavigateToTab(1)
+                }
             )
+
             ModuleCard(
                 title = "MDRC",
-                subtitle = "Compresor dinámico de 4 bandas",
+                subtitle = "4 BAND DYNAMICS",
                 isActive = config.isEnabled && config.mdrcEnabled,
                 modifier = Modifier.weight(1f),
-                onClick = { onNavigateToTab(3) }
+                onClick = {
+                    onNavigateToTab(3)
+                }
             )
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
+
             ModuleCard(
-                title = "Espacial",
-                subtitle = if (config.virtualizerEnabled) "${config.virtualizerStrength / 10}% de amplitud" else "Omitido",
-                isActive = config.isEnabled && config.virtualizerEnabled,
+                title = "SPATIAL",
+                subtitle = if (config.virtualizerEnabled) {
+                    "${config.virtualizerStrength / 10}% AMPLITUDE"
+                } else {
+                    "BYPASSED"
+                },
+                isActive = config.isEnabled &&
+                    config.virtualizerEnabled,
                 modifier = Modifier.weight(1f),
-                onClick = { onNavigateToTab(4) }
+                onClick = {
+                    onNavigateToTab(4)
+                }
             )
+
             ModuleCard(
-                title = "Limitador",
-                subtitle = if (config.limiterEnabled) "Techo: ${config.limiterThresholdDb} dB" else "Desactivado",
-                isActive = config.isEnabled && config.limiterEnabled,
+                title = "LIMITER",
+                subtitle = if (config.limiterEnabled) {
+                    "CEILING ${config.limiterThresholdDb} dB"
+                } else {
+                    "BYPASSED"
+                },
+                isActive = config.isEnabled &&
+                    config.limiterEnabled,
                 modifier = Modifier.weight(1f),
-                onClick = { onNavigateToTab(5) }
+                onClick = {
+                    onNavigateToTab(5)
+                }
             )
         }
     }
@@ -482,38 +767,68 @@ private fun ModuleCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier.clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = SbzCardBg),
-        shape = RoundedCornerShape(10.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isActive) SbzCyan.copy(alpha = 0.5f) else SbzBorder
-        )
+    Surface(
+        modifier = modifier
+            .clickable {
+                onClick()
+            }
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (isActive) {
+                        SbzCyan.copy(alpha = 0.55f)
+                    } else {
+                        SbzBorder
+                    }
+                ),
+                RoundedCornerShape(6.dp)
+            ),
+        shape = RoundedCornerShape(6.dp),
+        color = SbzCardBg
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+
+        Column(
+            modifier = Modifier.padding(9.dp)
+        ) {
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 Text(
                     text = title,
-                    fontSize = 14.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = SbzTextPrimary
+                    color = if (isActive) {
+                        SbzCyan
+                    } else {
+                        SbzTextPrimary
+                    },
+                    modifier = Modifier.weight(1f)
                 )
+
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
-                        .background(if (isActive) SbzCyan else SbzTextDisabled)
+                        .background(
+                            if (isActive) {
+                                SbzCyan
+                            } else {
+                                SbzTextDisabled
+                            }
+                        )
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
+
+            Spacer(modifier = Modifier.height(3.dp))
+
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 7.sp,
                 color = SbzTextSecondary
             )
         }

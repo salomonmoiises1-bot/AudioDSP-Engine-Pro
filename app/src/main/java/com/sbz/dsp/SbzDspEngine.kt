@@ -152,6 +152,12 @@ class SbzDspEngine {
                 previous.preGainDb == config.preGainDb &&
                 previous.bassBoostEnabled == config.bassBoostEnabled &&
                 previous.bassBoostStrength == config.bassBoostStrength &&
+                previous.toneBassDb == config.toneBassDb &&
+                previous.toneMidDb == config.toneMidDb &&
+                previous.toneTrebleDb == config.toneTrebleDb &&
+                previous.eqGains == config.eqGains &&
+                previous.masterGainDb == config.masterGainDb &&
+                previous.balance == config.balance &&
                 previous.autoGainEnabled == config.autoGainEnabled &&
                 previous.autoGainTargetDb == config.autoGainTargetDb &&
                 previous.virtualizerEnabled == config.virtualizerEnabled &&

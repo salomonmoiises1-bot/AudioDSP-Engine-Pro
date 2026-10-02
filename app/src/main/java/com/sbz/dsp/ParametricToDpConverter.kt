@@ -18,7 +18,7 @@ object ParametricToDpConverter {
     private const val MIN_FREQ = 20f
     private const val MAX_FREQ = 22000f
     private const val GRID_SIZE = 768
-    private const val ADAPT_ITERS = 96
+    private const val ADAPT_ITERS = 256
 
     @Volatile var deviceSampleRateHz: Float = 48000f
     @Volatile var frameDurationMs: Float = 80f
@@ -99,11 +99,16 @@ object ParametricToDpConverter {
             return worst
         }
 
-        val seed = ArrayList<Pair<Float, Boolean>>(total + 8)
-        // Equalizer314's low-end sub-bin seeds, retained even though sBz has
-        // only 32 bands. They help the allocator preserve the lowest octave.
+        val seed = ArrayList<Pair<Float, Boolean>>(total + 140)
+        // Equalizer314 seed geometry: two sub-bin LF splitters plus its
+        // Wavelet-compatible frequency table. The 32 logical sBz centres are
+        // then inserted as hard anchors. Because total == 32 and there are
+        // exactly 32 logical anchors, the final physical slots remain one to
+        // one with the user's 32 controls; the helper EQ stages only shape the
+        // response, they do not consume graphic-EQ slots.
         seed += 5f to false
         seed += 15f to false
+        for (f in WAVELET_FREQUENCIES) seed += f to false
         for (f in anchors) seed += f.coerceIn(min, max) to true
         seed.sortBy { it.first }
 
@@ -262,17 +267,27 @@ object ParametricToDpConverter {
     }
 
     private fun collectAnchors(eq: ParametricEqualizer): List<Float> {
-        val anchors = ArrayList<Float>(eq.getBandCount())
-        for (i in 0 until eq.getBandCount()) {
-            val band = eq.getBand(i) ?: continue
-            if (band.enabled && band.frequency in MIN_FREQ..MAX_FREQ) anchors += band.frequency
-        }
-        overlayEq?.takeIf { it !== eq }?.let { overlay ->
-            for (i in 0 until overlay.getBandCount()) {
-                val band = overlay.getBand(i) ?: continue
-                if (band.enabled && band.frequency in MIN_FREQ..MAX_FREQ) anchors += band.frequency
+        // Only the 32 graphic-EQ bands are physical anchors. Tone/Bass Boost
+        // helper filters remain part of the analytic response but must not
+        // displace any of the 32 user-controlled EQ slots.
+        val count = minOf(DspConfig.FREQUENCIES.size, eq.getBandCount())
+        return buildList(count) {
+            for (i in 0 until count) {
+                val band = eq.getBand(i) ?: continue
+                if (band.enabled && band.frequency in MIN_FREQ..MAX_FREQ) add(band.frequency)
             }
         }
-        return anchors
     }
+
+    // Equalizer314/Wavelet-compatible seed table used by its adaptive
+    // cutoff allocator. It is only a seed; sBz still emits exactly 32 bands.
+    private val WAVELET_FREQUENCIES = floatArrayOf(
+        20f,21f,22f,23f,24f,26f,27f,29f,30f,32f,34f,36f,38f,40f,43f,45f,48f,50f,53f,56f,
+        59f,63f,66f,70f,74f,78f,83f,87f,92f,97f,103f,109f,115f,121f,128f,136f,143f,151f,160f,169f,
+        178f,188f,199f,210f,222f,235f,248f,262f,277f,292f,309f,326f,345f,364f,385f,406f,429f,453f,479f,506f,
+        534f,565f,596f,630f,665f,703f,743f,784f,829f,875f,924f,977f,1032f,1090f,1151f,1216f,1284f,1357f,1433f,1514f,
+        1599f,1689f,1784f,1885f,1991f,2103f,2221f,2347f,2479f,2618f,2766f,2921f,3086f,3260f,3443f,3637f,3842f,4058f,
+        4287f,4528f,4783f,5052f,5337f,5637f,5955f,6290f,6644f,7018f,7414f,7831f,8272f,8738f,9230f,9749f,10298f,10878f,
+        11490f,12137f,12821f,13543f,14305f,15110f,15961f,16860f,17809f,18812f,19871f
+    )
 }

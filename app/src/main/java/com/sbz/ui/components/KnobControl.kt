@@ -41,6 +41,7 @@ fun KnobControl(
     val displayValue = remember(value) {
         if (value > 0f) "+%.1f".format(value) else "%.1f".format(value)
     }
+    val latestValue by rememberUpdatedState(value)
 
     Column(
         modifier = modifier.width(80.dp),
@@ -61,13 +62,21 @@ fun KnobControl(
             modifier = Modifier
                 .size(64.dp)
                 .pointerInput(range) {
-                    detectVerticalDragGestures { change, dragAmount ->
-                        change.consume()
-                        val span = range.endInclusive - range.start
-                        val delta = -(dragAmount / 150f) * span
-                        val newValue = (value + delta).coerceIn(range.start, range.endInclusive)
-                        onValueChange(newValue)
-                    }
+                    var valueAtGestureStart = latestValue
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            valueAtGestureStart = latestValue
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            val span = range.endInclusive - range.start
+                            val delta = -(dragAmount / 150f) * span
+                            val newValue = (valueAtGestureStart + delta)
+                                .coerceIn(range.start, range.endInclusive)
+                            valueAtGestureStart = newValue
+                            onValueChange(newValue)
+                        }
+                    )
                 },
             contentAlignment = Alignment.Center
         ) {

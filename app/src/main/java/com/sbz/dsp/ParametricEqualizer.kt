@@ -1,7 +1,6 @@
 package com.sbz.dsp
 
 import kotlin.math.pow
-import kotlin.math.tanh
 
 /**
  * Parametric Equalizer - Custom DSP implementation
@@ -139,9 +138,6 @@ class ParametricEqualizer(private val sampleRate: Int = 48000) {
                 }
             }
 
-            buffer[i] = tanh(buffer[i].toDouble()).toFloat()
-            buffer[i + 1] = tanh(buffer[i + 1].toDouble()).toFloat()
-
             i += 2
         }
     }
@@ -173,25 +169,6 @@ class ParametricEqualizer(private val sampleRate: Int = 48000) {
         if (bands.getOrNull(index)?.enabled != true) return 0f
         val magnitude = filter.getFrequencyResponse(frequency)
         return 20f * kotlin.math.log10(magnitude.coerceAtLeast(0.0001f))
-    }
-
-    /**
-     * Returns the effective frequency response after tanh saturation,
-     * assuming a 0 dBFS reference input. Normalized so flat EQ = 0 dB.
-     * Shows how much tanh compresses boosts at full volume.
-     */
-    fun getFrequencyResponseWithSaturation(frequency: Float): Float {
-        var totalMagnitude = 1f
-
-        for (i in filters.indices) {
-            if (bands[i].enabled) {
-                totalMagnitude *= filters[i].getFrequencyResponse(frequency)
-            }
-        }
-
-        val tanhRef = tanh(1.0) // baseline: tanh applied to flat signal
-        val saturated = tanh(totalMagnitude.toDouble()) / tanhRef
-        return 20f * kotlin.math.log10(saturated.coerceAtLeast(0.0001).toFloat())
     }
 
     fun loadPreset(presetName: String) {

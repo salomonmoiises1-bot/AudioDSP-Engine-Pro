@@ -182,19 +182,26 @@ data class DspConfig(
         }
 
     /**
-     * Compute safe internal headroom attenuation to prevent digital clipping
-     * when high positive EQ, Tone, and Bass Boost are combined.
+     * Compute deterministic input attenuation required to keep the estimated
+     * cumulative pre-DP boost at or below a 6 dB safety margin.
+     *
+     * This is headroom protection, not loudness normalization: the native
+     * effect path does not expose a PCM loudness meter, so autoGainTargetDb
+     * is intentionally not used for the realtime calculation.
      */
     fun computeHeadroomSafeguard(): Float {
         val maxEqBoost = eqGains.maxOrNull()?.coerceAtLeast(0f) ?: 0f
         val toneBoost = maxOf(0f, toneBassDb, toneMidDb, toneTrebleDb)
-        val bassBoostComp = if (bassBoostEnabled) (bassBoostStrength / 1000f) * 10.0f else 0f
-        val totalCumulativeBoost = maxEqBoost + toneBoost + bassBoostComp + preGainDb
-        return if (totalCumulativeBoost > 6.0f) {
-            -(totalCumulativeBoost - 6.0f) * 0.75f
+        val bassBoostComp = if (bassBoostEnabled) {
+            (bassBoostStrength.coerceIn(0, 1000) / 1000f) * 10.0f
         } else {
-            0.0f
+            0f
         }
+
+        // Include Pre-Gain in the estimate because the safeguard is applied
+        // together with Pre-Gain at the DynamicsProcessing input.
+        val estimatedPeakBoost = preGainDb + maxEqBoost + toneBoost + bassBoostComp
+        return -(estimatedPeakBoost - 6.0f).coerceAtLeast(0f)
     }
 }
 

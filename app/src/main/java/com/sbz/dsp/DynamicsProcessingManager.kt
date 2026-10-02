@@ -367,6 +367,49 @@ class DynamicsProcessingManager(
         )
     }
 
+    /**
+     * Update input gain/headroom without rebuilding the complete DSP chain.
+     * Pre-Gain and the automatic headroom safeguard only affect the DP input
+     * gain, so recreating EQ/MDRC/Limiter here is unnecessary.
+     */
+    @Synchronized
+    fun updatePreGain(config: DspConfig) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        if (!config.isEnabled) return
+
+        val automaticHeadroom =
+            if (config.autoGainEnabled) config.computeHeadroomSafeguard() else 0f
+
+        try {
+            dp.setInputGainAllChannelsTo(
+                (config.preGainDb + automaticHeadroom).coerceIn(-12f, 12f)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to update pre-gain on session=$audioSessionId", e)
+        }
+    }
+
+    /**
+     * Reapply only the limiter stage. This keeps limiter faders out of the
+     * full applyConfig() path while preserving the exact native parameters.
+     */
+    @Synchronized
+    fun updateLimiter(config: DspConfig) {
+        if (!initialized || effect == null) initialize()
+        val dp = effect ?: return
+        if (!config.isEnabled) return
+
+        try {
+            applyLimiter(dp, config)
+            // applyLimiter writes the limiter's own post-gain. Reapply the
+            // master contribution so a limiter-only change cannot erase it.
+            applyMasterGain(dp, config)
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to update limiter on session=$audioSessionId", e)
+        }
+    }
+
     @Synchronized
     fun updateMasterGain(config: DspConfig) {
         if (!initialized || effect == null) initialize()

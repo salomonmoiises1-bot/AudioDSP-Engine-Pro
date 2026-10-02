@@ -147,10 +147,21 @@ class SbzDspEngine {
             config.eqGains.indices.filter { i -> previous.eqGains.getOrNull(i) != config.eqGains.getOrNull(i) }
         } else emptyList()
 
-        val onlyFastChanges = previous.isEnabled == config.isEnabled &&
+        val onlyFastChanges =
+                previous.isEnabled == config.isEnabled &&
                 previous.preGainDb == config.preGainDb &&
                 previous.bassBoostEnabled == config.bassBoostEnabled &&
                 previous.bassBoostStrength == config.bassBoostStrength &&
+                previous.autoGainEnabled == config.autoGainEnabled &&
+                previous.autoGainTargetDb == config.autoGainTargetDb &&
+                previous.virtualizerEnabled == config.virtualizerEnabled &&
+                previous.virtualizerStrength == config.virtualizerStrength &&
+                previous.limiterEnabled == config.limiterEnabled &&
+                previous.limiterThresholdDb == config.limiterThresholdDb &&
+                previous.limiterAttackMs == config.limiterAttackMs &&
+                previous.limiterReleaseMs == config.limiterReleaseMs &&
+                previous.limiterRatio == config.limiterRatio &&
+                previous.limiterPostGainDb == config.limiterPostGainDb &&
                 previous.mdrcEnabled == config.mdrcEnabled &&
                 previous.mdrcBands == config.mdrcBands &&
                 previous.hallEnabled == config.hallEnabled &&
@@ -163,47 +174,62 @@ class SbzDspEngine {
                 previous.hallReflectionsLevelDb == config.hallReflectionsLevelDb &&
                 previous.hallReverbDelayMs == config.hallReverbDelayMs &&
                 previous.hallRoomHfLevelDb == config.hallRoomHfLevelDb &&
-                previous.hallRoomLevelDb == config.hallRoomLevelDb &&
-                previous.autoGainEnabled == config.autoGainEnabled &&
-                previous.autoGainTargetDb == config.autoGainTargetDb &&
-                previous.virtualizerEnabled == config.virtualizerEnabled &&
-                previous.virtualizerStrength == config.virtualizerStrength &&
-                previous.limiterEnabled == config.limiterEnabled &&
-                previous.limiterThresholdDb == config.limiterThresholdDb &&
-                previous.limiterAttackMs == config.limiterAttackMs &&
-                previous.limiterReleaseMs == config.limiterReleaseMs &&
-                previous.limiterRatio == config.limiterRatio &&
-                previous.limiterPostGainDb == config.limiterPostGainDb
+                previous.hallRoomLevelDb == config.hallRoomLevelDb
 
         if (!onlyFastChanges) {
             updateConfig(config)
             return
         }
 
+        val headroomInputsChanged =
+            previous.preGainDb != config.preGainDb ||
+            previous.eqGains != config.eqGains ||
+            previous.toneBassDb != config.toneBassDb ||
+            previous.toneMidDb != config.toneMidDb ||
+            previous.toneTrebleDb != config.toneTrebleDb ||
+            previous.bassBoostEnabled != config.bassBoostEnabled ||
+            previous.bassBoostStrength != config.bassBoostStrength ||
+            previous.autoGainEnabled != config.autoGainEnabled
+
         for (pipeline in pipelines.values) {
+            if (headroomInputsChanged) {
+                // Keep the automatic headroom compensation synchronized with
+                // every control that can change the cumulative pre-DP gain.
+                pipeline.dynamicsProcessing.updatePreGain(config)
+            }
+
             if (previous.masterGainDb != config.masterGainDb) {
                 pipeline.dynamicsProcessing.updateMasterGain(config)
             }
             if (previous.balance != config.balance) {
                 pipeline.dynamicsProcessing.updateBalance(config)
             }
-            if (previous.toneBassDb != config.toneBassDb || previous.toneMidDb != config.toneMidDb || previous.toneTrebleDb != config.toneTrebleDb) {
+            if (previous.toneBassDb != config.toneBassDb || previous.toneMidDb != config.toneMidDb || previous.toneTrebleDb != config.toneTrebleDb ||
+                previous.bassBoostEnabled != config.bassBoostEnabled || previous.bassBoostStrength != config.bassBoostStrength) {
                 pipeline.dynamicsProcessing.updateTone(config)
             }
             for (index in changedEqIndices) {
                 pipeline.dynamicsProcessing.updateEqBand(config, index)
             }
 
-            // Virtualizer is a realtime effect. Apply it here when only its
-            // controls changed instead of waiting for a full pipeline rebuild.
             if (previous.virtualizerEnabled != config.virtualizerEnabled ||
-                previous.virtualizerStrength != config.virtualizerStrength ||
-                previous.isEnabled != config.isEnabled
+                previous.virtualizerStrength != config.virtualizerStrength
             ) {
                 pipeline.virtualizer.apply(
                     config.isEnabled && config.virtualizerEnabled,
                     config.virtualizerStrength
                 )
+            }
+
+            val limiterChanged =
+                previous.limiterEnabled != config.limiterEnabled ||
+                previous.limiterThresholdDb != config.limiterThresholdDb ||
+                previous.limiterAttackMs != config.limiterAttackMs ||
+                previous.limiterReleaseMs != config.limiterReleaseMs ||
+                previous.limiterRatio != config.limiterRatio ||
+                previous.limiterPostGainDb != config.limiterPostGainDb
+            if (limiterChanged) {
+                pipeline.dynamicsProcessing.updateLimiter(config)
             }
         }
         updateState()

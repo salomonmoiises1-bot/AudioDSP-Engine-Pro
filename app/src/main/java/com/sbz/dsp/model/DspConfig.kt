@@ -188,7 +188,7 @@ data class DspConfig(
     fun computeHeadroomSafeguard(): Float {
         val maxEqBoost = eqGains.maxOrNull()?.coerceAtLeast(0f) ?: 0f
         val toneBoost = maxOf(0f, toneBassDb, toneMidDb, toneTrebleDb)
-        val bassBoostComp = if (bassBoostEnabled) (bassBoostStrength / 1000f) * 4.0f else 0f
+        val bassBoostComp = if (bassBoostEnabled) (bassBoostStrength / 1000f) * 10.0f else 0f
         val totalCumulativeBoost = maxEqBoost + toneBoost + bassBoostComp + preGainDb
         return if (totalCumulativeBoost > 6.0f) {
             -(totalCumulativeBoost - 6.0f) * 0.75f

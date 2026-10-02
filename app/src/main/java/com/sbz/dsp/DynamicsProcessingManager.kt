@@ -3,6 +3,7 @@ package com.sbz.dsp
 import android.media.audiofx.DynamicsProcessing
 import android.os.Build
 import android.util.Log
+import java.util.concurrent.atomic.AtomicReference
 import com.sbz.dsp.model.DspConfig
 import com.sbz.dsp.model.MdrcBandConfig
 
@@ -29,12 +30,10 @@ class DynamicsProcessingManager(
         private const val TAG = "DynamicsProcessingMgr"
 
         private const val PRIORITY = Int.MAX_VALUE
-        private const val CHANNEL_COUNT = 2
+                private const val CHANNEL_COUNT = 2
 
         private const val REQUESTED_EQ_BANDS = 32
-        private const val DP_EQ_BANDS = 128
-        private const val EQ_Q = 1.4142135f
-        private const val EQ_SAMPLE_RATE = 48000f
+        private const val EQ_BAND_Q = 4.318
 
         private const val MDRC_BAND_COUNT = 4
 
@@ -48,6 +47,8 @@ class DynamicsProcessingManager(
         private const val DEFAULT_RELEASE_MS = 80f
         private const val DEFAULT_MAKEUP_DB = 0f
         private const val DEFAULT_KNEE_DB = 2f
+        private const val DP_FRAME_DURATION_MS = 80f
+        private const val MIN_EQ_WRITE_SPACING_MS = 16L
     }
 
     data class EqBackendInfo(
@@ -60,8 +61,16 @@ class DynamicsProcessingManager(
 
     private var effect: DynamicsProcessing? = null
     private var eqBandCount: Int = 0
-    private val parametricEq = ParametricEqualizer(EQ_SAMPLE_RATE, REQUESTED_EQ_BANDS)
     private var initialized = false
+
+    // Equalizer314-style asynchronous DP writer: graph changes are converted
+    // once, then the complete EQ stage is swapped atomically on a worker.
+    // This avoids dozens of binder writes and avoids rebuilding DP during drags.
+    private val eqWorkerThread = android.os.HandlerThread("sBz-EqDpWorker").apply { start() }
+    private val eqWorker = android.os.Handler(eqWorkerThread.looper)
+    @Volatile private var pendingEqWrite: Runnable? = null
+    @Volatile private var lastEqWriteMs: Long = 0L
+    private val pendingEqConfig = AtomicReference<DspConfig?>(null)
 
     @Volatile
     private var eqBackendInfo = EqBackendInfo(
@@ -150,16 +159,19 @@ class DynamicsProcessingManager(
      * native backend may accept a different physical band count.
      */
     private fun refreshEqBackendInfo(dp: DynamicsProcessing) {
-        val preCount = try { dp.getConfig().preEqBandCount } catch (_: Exception) { 0 }
-        val postCount = try { dp.getConfig().postEqBandCount } catch (_: Exception) { 0 }
-        val actualCount = preCount + postCount
+        val actualCount = try {
+            dp.getConfig().preEqBandCount
+        } catch (_: Exception) {
+            0
+        }
 
         val frequencies = buildList {
-            for (index in 0 until preCount) {
-                try { add(dp.getPreEqByChannelIndex(0).getBand(index).getCutoffFrequency()) } catch (_: Exception) { break }
-            }
-            for (index in 0 until postCount) {
-                try { add(dp.getPostEqByChannelIndex(0).getBand(index).getCutoffFrequency()) } catch (_: Exception) { break }
+            for (index in 0 until actualCount) {
+                try {
+                    add(dp.getPreEqByChannelIndex(0).getBand(index).getCutoffFrequency())
+                } catch (_: Exception) {
+                    break
+                }
             }
         }
 
@@ -196,25 +208,56 @@ class DynamicsProcessingManager(
     }
 
     private fun createInitialConfig(): DynamicsProcessing.Config {
-        // sBz is designed around 32 real graphic-EQ filters. Do not tailor
-        // the DSP layout to a particular phone/HAL. Android/vendor stacks
-        // may reject the requested layout; initialization will then fail
-        // cleanly and report the unavailable backend.
-        val builder = DynamicsProcessing.Config.Builder(
-            DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-            CHANNEL_COUNT,
-            true,
-            DP_EQ_BANDS,
-            true,
-            MDRC_BAND_COUNT,
-            true,
-            DP_EQ_BANDS,
-            true
+        // sBz uses exactly 32 physical EQ bands.
+        // Do not negotiate 128/127 bands: that path is unnecessarily expensive
+        // for the 32-band graphic EQ and was the source of the realtime overload.
+        val candidates = intArrayOf(REQUESTED_EQ_BANDS)
+
+        var lastError: Exception? = null
+
+        for (bandCount in candidates) {
+            try {
+                val builder = DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    CHANNEL_COUNT,
+                    true,
+                    bandCount,
+                    true,
+                    MDRC_BAND_COUNT,
+                    false,
+                    0,
+                    true
+                )
+
+                builder.setPreferredFrameDuration(DP_FRAME_DURATION_MS)
+                val config = builder.build()
+
+                eqBandCount = bandCount
+
+                Log.i(
+                    TAG,
+                    "DynamicsProcessing config created: " +
+                        "EQ=$bandCount MDRC=$MDRC_BAND_COUNT"
+                )
+
+                return config
+
+            } catch (e: Exception) {
+                lastError = e
+
+                Log.w(
+                    TAG,
+                    "Unable to create DynamicsProcessing " +
+                        "config with EQ=$bandCount",
+                    e
+                )
+            }
+        }
+
+        throw IllegalStateException(
+            "Unable to create DynamicsProcessing configuration",
+            lastError
         )
-        val config = builder.build()
-        eqBandCount = config.preEqBandCount + config.postEqBandCount
-        Log.i(TAG, "DynamicsProcessing config created: EQ=${config.preEqBandCount} MDRC=${config.mbcBandCount}")
-        return config
     }
 
     /**
@@ -361,16 +404,16 @@ class DynamicsProcessingManager(
     @Synchronized
     fun updateTone(config: DspConfig) {
         if (!initialized || effect == null) initialize()
-        applyGraphicEq32(config)
+        scheduleParametricEq(config)
     }
 
     @Synchronized
     fun updateEqBand(config: DspConfig, sourceIndex: Int) {
         if (sourceIndex !in config.eqGains.indices) return
         if (!initialized || effect == null) initialize()
-        val gain = if (config.isEnabled) config.eqGains[sourceIndex].coerceIn(-15f, 15f) else 0f
-        syncParametricEq(config)
-        applyEqualizer314Curve(config)
+        // Equalizer314-style live update: keep the physical DP layout frozen and
+        // replace only the newest complete EQ stage on the worker thread.
+        scheduleParametricEq(config)
     }
 
     @Synchronized
@@ -382,7 +425,6 @@ class DynamicsProcessingManager(
         val dp = effect ?: return
 
         try {
-            ParametricToDpConverter.layoutFrozen = false
             dp.setEnabled(config.isEnabled)
 
             val automaticHeadroom =
@@ -397,9 +439,8 @@ class DynamicsProcessingManager(
                     .coerceIn(-12f, 12f)
             )
 
-            applyPreEq(dp, config)
+            scheduleParametricEq(config)
             applyMdrc(dp, config)
-            applyGraphicEq(dp, config)
             applyLimiter(dp, config)
 
             if (config.isEnabled) {
@@ -409,84 +450,121 @@ class DynamicsProcessingManager(
         } catch (e: Exception) {
             Log.e(
                 TAG,
-                "Error applying DSP configuration " +
-                    "to session=$audioSessionId",
+                "Error applying DSP configuration to session=$audioSessionId",
                 e
             )
         }
     }
 
     /**
-     * Equalizer314 graphic-band pipeline: 32 logical peaking filters are
-     * converted to a high-resolution DP staircase and interleaved across
-     * Pre-EQ + Post-EQ. No Android Equalizer effect is used.
+     * Equalizer314 integration point.
+     *
+     * The expensive parametric-response fitting NEVER runs on the UI thread.
+     * Only the newest configuration is retained while a fader moves. The
+     * converter creates the high-resolution DP staircase once, then freezes
+     * its physical cutoffs for subsequent realtime changes. DP receives one
+     * atomic Eq object per channel, rather than one binder transaction per
+     * logical band.
      */
-    private fun applyPreEq(dp: DynamicsProcessing, config: DspConfig) {
-        applyEqualizer314Curve(config)
-    }
-
-    private fun applyGraphicEq32(config: DspConfig) {
-        applyEqualizer314Curve(config)
-    }
-
-    private fun syncParametricEq(config: DspConfig) {
-        val enabled = config.isEnabled
-        for (i in DspConfig.FREQUENCIES.indices) {
-            parametricEq.setBand(
-                i,
-                DspConfig.FREQUENCIES[i],
-                if (enabled) config.eqGains.getOrElse(i) { 0f } else 0f,
-                EQ_Q,
-                enabled
-            )
-        }
-    }
-
-    private fun applyEqualizer314Curve(config: DspConfig) {
+    private fun scheduleParametricEq(config: DspConfig) {
         val dp = effect ?: return
-        try {
-            syncParametricEq(config)
-            ParametricToDpConverter.setNumBands(DP_EQ_BANDS)
-            ParametricToDpConverter.deviceSampleRateHz = EQ_SAMPLE_RATE
-            ParametricToDpConverter.layoutFrozen = true
-            val converted = ParametricToDpConverter.convertInterleaved(parametricEq)
-            val preCount = dp.getConfig().preEqBandCount
-            val postCount = dp.getConfig().postEqBandCount
-
-            for (channel in 0 until dp.channelCountSafe()) {
-                if (preCount > 0) {
-                    val pre = dp.getPreEqByChannelIndex(channel)
-                    val n = minOf(preCount, converted.preCutoffs.size)
-                    for (i in 0 until n) {
-                        val band = pre.getBand(i)
-                        band.setCutoffFrequency(converted.preCutoffs[i].coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
-                        band.setGain(if (config.isEnabled) converted.preGains[i].coerceIn(-24f, 24f) else 0f)
-                        band.setEnabled(config.isEnabled)
-                        pre.setBand(i, band)
-                    }
-                    dp.setPreEqByChannelIndex(channel, pre)
+        pendingEqConfig.set(config)
+        pendingEqWrite?.let { eqWorker.removeCallbacks(it) }
+        val job = Runnable {
+            val latest = pendingEqConfig.getAndSet(null) ?: return@Runnable
+            try {
+                if (!dp.hasControl()) {
+                    Log.w(TAG, "DP lost control; EQ write skipped for session=$audioSessionId")
+                    return@Runnable
                 }
-                if (postCount > 0) {
-                    val post = dp.getPostEqByChannelIndex(channel)
-                    val n = minOf(postCount, converted.postCutoffs.size)
-                    for (i in 0 until n) {
-                        val band = post.getBand(i)
-                        band.setCutoffFrequency(converted.postCutoffs[i].coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ))
-                        band.setGain(if (config.isEnabled) converted.postGains[i].coerceIn(-24f, 24f) else 0f)
-                        band.setEnabled(config.isEnabled)
-                        post.setBand(i, band)
+
+                val physicalCount = dp.getConfig().preEqBandCount
+                if (physicalCount <= 0) return@Runnable
+
+                // sBz intentionally keeps one fixed 32-band DP stage.
+                // There is no 128/127-band expansion here.
+                val eq = ParametricEqualizer(48000)
+                eq.clearBands()
+                val enabled = latest.isEnabled
+                for (index in DspConfig.FREQUENCIES.indices) {
+                    eq.addBand(
+                        DspConfig.FREQUENCIES[index],
+                        if (enabled) latest.eqGains.getOrElse(index) { 0f }.coerceIn(-15f, 15f) else 0f,
+                        BiquadFilter.FilterType.BELL,
+                        EQ_BAND_Q
+                    )
+                }
+
+                if (enabled) {
+                    if (latest.toneBassDb != 0f) {
+                        eq.addBand(120f, latest.toneBassDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
                     }
-                    dp.setPostEqByChannelIndex(channel, post)
+                    if (latest.toneMidDb != 0f) {
+                        eq.addBand(1000f, latest.toneMidDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
+                    }
+                    if (latest.toneTrebleDb != 0f) {
+                        eq.addBand(8000f, latest.toneTrebleDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
+                    }
+                    if (latest.bassBoostEnabled && latest.bassBoostStrength > 0) {
+                        val boost = (latest.bassBoostStrength.coerceIn(0, 1000) / 1000f) * 6f
+                        eq.addBand(100f, boost, BiquadFilter.FilterType.LOW_SHELF, 0.707)
+                    }
+                }
+                eq.isEnabled = enabled
+
+                // Fixed 32-band realtime path: the physical cutoffs are exactly
+                // the 32 logical sBz frequencies. Only the resulting 32 gains
+                // are recalculated; there is no adaptive layout or FFT fit.
+                val converted = ParametricToDpConverter.convertFixed32(
+                    eq,
+                    DspConfig.FREQUENCIES
+                )
+
+                val n = minOf(physicalCount, converted.cutoffs.size)
+                if (n <= 0) return@Runnable
+                val cutoffs = converted.cutoffs.copyOf(n)
+                val gains = converted.gains.copyOf(n)
+
+                val leftEq = DynamicsProcessing.Eq(true, true, n)
+                val rightEq = DynamicsProcessing.Eq(true, true, n)
+                for (i in 0 until n) {
+                    val cutoff = cutoffs[i].coerceIn(MIN_CUTOFF_HZ, MAX_CUTOFF_HZ)
+                    val gain = gains[i].coerceIn(-15f, 15f)
+                    val band = DynamicsProcessing.EqBand(enabled, cutoff, gain)
+                    leftEq.setBand(i, band)
+                    rightEq.setBand(i, DynamicsProcessing.EqBand(enabled, cutoff, gain))
+                }
+
+                // Atomic stage replacement: one transaction per channel.
+                dp.setPreEqByChannelIndex(0, leftEq)
+                if (dp.channelCountSafe() > 1) dp.setPreEqByChannelIndex(1, rightEq)
+                lastEqWriteMs = android.os.SystemClock.uptimeMillis()
+            } catch (e: Throwable) {
+                Log.e(TAG, "Equalizer314-style EQ conversion/write failed", e)
+            } finally {
+                pendingEqWrite = null
+                // If another config arrived while this job was running, trigger
+                // exactly one follow-up. Never overwrite the newer AtomicReference
+                // value with the older config that this job was processing.
+                if (pendingEqConfig.get() != null) {
+                    eqWorker.post {
+                        val queued = pendingEqConfig.get()
+                        if (queued != null) scheduleParametricEq(queued)
+                    }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Unable to apply Equalizer314 EQ curve", e)
         }
+
+        pendingEqWrite = job
+        val delay = (lastEqWriteMs + MIN_EQ_WRITE_SPACING_MS - android.os.SystemClock.uptimeMillis())
+            .coerceIn(0L, MIN_EQ_WRITE_SPACING_MS)
+        eqWorker.postDelayed(job, delay)
     }
 
-    /** Post-EQ participates in the Equalizer314 Pre/Post interleave. */
+    /** Post-EQ is intentionally unused: the 32-band graphic EQ is rendered once in Pre-EQ. */
     private fun applyGraphicEq(dp: DynamicsProcessing, config: DspConfig) {
-        // Applied by applyEqualizer314Curve() so both stages share one layout.
+        // No second EQ stage: avoiding a second effect stage prevents double-EQ and
+        // also avoids touching an unallocated Post-EQ stage on vendor HALs.
     }
 
     /**
@@ -969,7 +1047,10 @@ class DynamicsProcessingManager(
         effect = null
         initialized = false
         eqBandCount = 0
-        ParametricToDpConverter.layoutFrozen = false
+        pendingEqWrite?.let { eqWorker.removeCallbacks(it) }
+        pendingEqWrite = null
+        pendingEqConfig.set(null)
+        eqWorkerThread.quitSafely()
     }
 
     private fun DynamicsProcessing.channelCountSafe(): Int {

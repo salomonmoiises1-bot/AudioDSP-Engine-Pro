@@ -419,9 +419,19 @@ class DynamicsProcessingManager(
         for (channel in 0 until dp.channelCountSafe()) {
             try {
                 val limiter = dp.getLimiterByChannelIndex(channel)
-                limiter.setPostGain(
+                val totalPostGain =
                     (config.limiterPostGainDb + config.masterGainDb)
                         .coerceIn(-24f, 12f)
+
+                limiter.setPostGain(totalPostGain)
+
+                // Keep the native limiter state synchronized when Master Gain
+                // crosses zero. The limiter may be temporarily enabled only
+                // to provide output gain; when neither protection nor output
+                // gain is requested, it must be disabled again.
+                limiter.setEnabled(
+                    config.isEnabled &&
+                        (config.limiterEnabled || totalPostGain != 0f)
                 )
                 dp.setLimiterByChannelIndex(channel, limiter)
             } catch (e: Exception) {

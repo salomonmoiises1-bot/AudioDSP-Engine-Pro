@@ -1,6 +1,7 @@
 package com.sbz.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,351 +33,509 @@ fun DynamicsScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                1.dp,
-                if (config.mdrcEnabled) {
-                    SbzCyan.copy(alpha = 0.4f)
-                } else {
-                    SbzBorder
-                }
-            )
+
+        // ============================================================
+        // HEADER
+        // ============================================================
+
+        Text(
+            text = "sBz // DYNAMICS PROCESSOR",
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = SbzCyan
+        )
+
+        Text(
+            text = if (config.mdrcEnabled) {
+                "MDRC ONLINE  •  4-BAND MULTIBAND COMPRESSION"
+            } else {
+                "MDRC BYPASSED  •  PROCESSOR STANDBY"
+            },
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            color = SbzTextSecondary
+        )
+
+        // ============================================================
+        // MDRC
+        // ============================================================
+
+        RetroPanel(
+            title = "MDRC // MULTIBAND DYNAMICS",
+            active = config.mdrcEnabled
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Column {
-                        Text(
-                            text = "MDRC — COMPRESOR MULTIBANDA",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = SbzCyan
-                        )
+                    Text(
+                        text = "MBC / DYNAMIC RANGE CONTROL",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = SbzTextPrimary
+                    )
 
-                        Text(
-                            text = "MBC DynamicsProcessing nativo de 4 bandas",
-                            fontSize = 11.sp,
-                            color = SbzTextSecondary
-                        )
-                    }
+                    Spacer(Modifier.height(3.dp))
 
-                    Switch(
-                        checked = config.mdrcEnabled,
-                        onCheckedChange = {
-                            viewModel.setMdrcEnabled(it)
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = SbzCyan,
-                            checkedTrackColor = SbzCyanDim
-                        )
+                    Text(
+                        text = "Procesador multibanda nativo de 4 bandas",
+                        fontSize = 10.sp,
+                        color = SbzTextSecondary
                     )
                 }
 
-                Spacer(
-                    modifier = Modifier.height(14.dp)
+                Switch(
+                    checked = config.mdrcEnabled,
+                    onCheckedChange = viewModel::setMdrcEnabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = SbzCyan,
+                        checkedTrackColor = SbzCyanDim,
+                        uncheckedThumbColor = SbzTextSecondary,
+                        uncheckedTrackColor = SbzSurface
+                    )
                 )
+            }
 
-                TabRow(
-                    selectedTabIndex = selectedBandIndex,
-                    containerColor = SbzSurface,
-                    contentColor = SbzCyan
-                ) {
-                    config.mdrcBands.forEachIndexed { index, band ->
-                        Tab(
-                            selected = selectedBandIndex == index,
-                            onClick = {
-                                selectedBandIndex = index
+            Spacer(Modifier.height(12.dp))
+
+            // ========================================================
+            // BAND SELECTOR
+            // ========================================================
+
+            Text(
+                text = "BAND SELECT",
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = SbzCyan
+            )
+
+            Spacer(Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                config.mdrcBands.forEachIndexed { index, band ->
+
+                    val selected = selectedBandIndex == index
+
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        onClick = {
+                            selectedBandIndex = index
+                        },
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (selected) {
+                            SbzCyan.copy(alpha = 0.16f)
+                        } else {
+                            SbzSurface
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) {
+                                SbzCyan.copy(alpha = 0.75f)
+                            } else {
+                                SbzBorder
                             }
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
+
+                            Text(
+                                text = "B${index + 1}",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = if (selected) {
+                                    SbzCyan
+                                } else {
+                                    SbzTextSecondary
+                                }
+                            )
+
                             Text(
                                 text = band.name,
-                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 8.sp,
+                                color = if (selected) {
+                                    SbzTextPrimary
+                                } else {
+                                    SbzTextSecondary
+                                },
                                 maxLines = 1
                             )
                         }
                     }
                 }
-
-                Spacer(
-                    modifier = Modifier.height(14.dp)
-                )
-
-                config.mdrcBands
-                    .getOrNull(selectedBandIndex)
-                    ?.let { activeBand ->
-
-                        BandParameters(
-                            band = activeBand,
-                            bandIndex = selectedBandIndex,
-                            allBands = config.mdrcBands,
-                            enabled = config.mdrcEnabled
-                        ) {
-                            viewModel.updateMdrcBand(
-                                selectedBandIndex,
-                                it
-                            )
-                        }
-                    }
             }
-        }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                1.dp,
-                if (config.hallEnabled) {
-                    SbzCyan.copy(alpha = 0.4f)
-                } else {
-                    SbzBorder
-                }
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
+            Spacer(Modifier.height(14.dp))
+
+            config.mdrcBands
+                .getOrNull(selectedBandIndex)
+                ?.let { activeBand ->
+
+                    BandParameters(
+                        band = activeBand,
+                        bandIndex = selectedBandIndex,
+                        allBands = config.mdrcBands,
+                        enabled = config.mdrcEnabled
                     ) {
-                        Text(
-                            text = "HALL / REVERB AMBIENTAL",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = SbzCyan
-                        )
-
-                        Text(
-                            text = if (engineStatus.hallReverbAvailable) {
-                                "EnvironmentalReverb nativo disponible"
-                            } else {
-                                "Efecto nativo no disponible en la sesión actual"
-                            },
-                            fontSize = 11.sp,
-                            color = SbzTextSecondary
+                        viewModel.updateMdrcBand(
+                            selectedBandIndex,
+                            it
                         )
                     }
+                }
+        }
 
-                    Switch(
-                        checked = config.hallEnabled,
-                        onCheckedChange = {
-                            viewModel.setHallEnabled(it)
+        // ============================================================
+        // HALL / REVERB
+        // ============================================================
+
+        RetroPanel(
+            title = "HALL // ENVIRONMENTAL REVERB",
+            active = config.hallEnabled
+        ) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+
+                    Text(
+                        text = "AMBIENT SPACE PROCESSOR",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = SbzTextPrimary
+                    )
+
+                    Spacer(Modifier.height(3.dp))
+
+                    Text(
+                        text = if (engineStatus.hallReverbAvailable) {
+                            "EnvironmentalReverb disponible"
+                        } else {
+                            "EnvironmentalReverb no disponible"
                         },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = SbzCyan,
-                            checkedTrackColor = SbzCyanDim
-                        )
+                        fontSize = 10.sp,
+                        color = SbzTextSecondary
                     )
                 }
 
-                Spacer(
-                    modifier = Modifier.height(8.dp)
+                Switch(
+                    checked = config.hallEnabled,
+                    onCheckedChange = viewModel::setHallEnabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = SbzCyan,
+                        checkedTrackColor = SbzCyanDim,
+                        uncheckedThumbColor = SbzTextSecondary,
+                        uncheckedTrackColor = SbzSurface
+                    )
                 )
+            }
 
-                Text(
-                    text = "Parámetros reales del motor de reverb de Android. Los cambios se aplican en tiempo real a las sesiones DSP activas.",
-                    fontSize = 11.sp,
-                    color = SbzTextSecondary
-                )
+            Spacer(Modifier.height(10.dp))
 
-                HallSlider(
-                    label = "Mezcla de reverb",
-                    value = config.hallMixPercent,
-                    range = 0f..100f,
-                    format = "%.0f %%",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallMix(it)
-                }
+            Text(
+                text = "PARÁMETROS DEL MOTOR NATIVO",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = SbzCyan
+            )
 
-                HallSlider(
-                    label = "Tiempo de decaimiento",
-                    value = config.hallDecayTimeMs,
-                    range = 100f..20000f,
-                    format = "%.0f ms",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallDecayTime(it)
-                }
+            Spacer(Modifier.height(8.dp))
 
-                HallSlider(
-                    label = "Decaimiento de agudos",
-                    value = config.hallDecayHfRatio,
-                    range = 0.1f..2f,
-                    format = "%.2fx",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallDecayHfRatio(it)
-                }
+            HallSlider(
+                label = "Mezcla de reverb",
+                value = config.hallMixPercent,
+                range = 0f..100f,
+                format = "%.0f %%",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallMix(it)
+            }
 
-                HallSlider(
-                    label = "Densidad",
-                    value = config.hallDensityPercent,
-                    range = 0f..100f,
-                    format = "%.0f %%",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallDensity(it)
-                }
+            HallSlider(
+                label = "Tiempo de decaimiento",
+                value = config.hallDecayTimeMs,
+                range = 100f..20000f,
+                format = "%.0f ms",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallDecayTime(it)
+            }
 
-                HallSlider(
-                    label = "Difusión",
-                    value = config.hallDiffusionPercent,
-                    range = 0f..100f,
-                    format = "%.0f %%",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallDiffusion(it)
-                }
+            HallSlider(
+                label = "Decaimiento de agudos",
+                value = config.hallDecayHfRatio,
+                range = 0.1f..2f,
+                format = "%.2fx",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallDecayHfRatio(it)
+            }
 
-                HallSlider(
-                    label = "Reflexiones tempranas — retardo",
-                    value = config.hallReflectionsDelayMs,
-                    range = 0f..300f,
-                    format = "%.0f ms",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallReflectionsDelay(it)
-                }
+            HallSlider(
+                label = "Densidad",
+                value = config.hallDensityPercent,
+                range = 0f..100f,
+                format = "%.0f %%",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallDensity(it)
+            }
 
-                HallSlider(
-                    label = "Reflexiones tempranas — nivel",
-                    value = config.hallReflectionsLevelDb,
-                    range = -90f..10f,
-                    format = "%.1f dB",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallReflectionsLevel(it)
-                }
+            HallSlider(
+                label = "Difusión",
+                value = config.hallDiffusionPercent,
+                range = 0f..100f,
+                format = "%.0f %%",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallDiffusion(it)
+            }
 
-                HallSlider(
-                    label = "Reverb — retardo",
-                    value = config.hallReverbDelayMs,
-                    range = 0f..100f,
-                    format = "%.0f ms",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallReverbDelay(it)
-                }
+            HallSlider(
+                label = "Reflexiones tempranas — retardo",
+                value = config.hallReflectionsDelayMs,
+                range = 0f..300f,
+                format = "%.0f ms",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallReflectionsDelay(it)
+            }
 
-                HallSlider(
-                    label = "Sala — altas frecuencias",
-                    value = config.hallRoomHfLevelDb,
-                    range = -90f..0f,
-                    format = "%.1f dB",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallRoomHfLevel(it)
-                }
+            HallSlider(
+                label = "Reflexiones tempranas — nivel",
+                value = config.hallReflectionsLevelDb,
+                range = -90f..10f,
+                format = "%.1f dB",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallReflectionsLevel(it)
+            }
 
-                HallSlider(
-                    label = "Nivel general de sala",
-                    value = config.hallRoomLevelDb,
-                    range = -90f..0f,
-                    format = "%.1f dB",
-                    enabled = config.hallEnabled
-                ) {
-                    viewModel.setHallRoomLevel(it)
-                }
+            HallSlider(
+                label = "Reverb — retardo",
+                value = config.hallReverbDelayMs,
+                range = 0f..100f,
+                format = "%.0f ms",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallReverbDelay(it)
+            }
+
+            HallSlider(
+                label = "Sala — altas frecuencias",
+                value = config.hallRoomHfLevelDb,
+                range = -90f..0f,
+                format = "%.1f dB",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallRoomHfLevel(it)
+            }
+
+            HallSlider(
+                label = "Nivel general de sala",
+                value = config.hallRoomLevelDb,
+                range = -90f..0f,
+                format = "%.1f dB",
+                enabled = config.hallEnabled
+            ) {
+                viewModel.setHallRoomLevel(it)
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = SbzCardBg
-            ),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(
-                1.dp,
-                if (config.autoGainEnabled) {
-                    SbzCyan.copy(alpha = 0.4f)
-                } else {
-                    SbzBorder
-                }
-            )
+        // ============================================================
+        // AUTOGAIN
+        // ============================================================
+
+        RetroPanel(
+            title = "HEADROOM // AUTO GAIN",
+            active = config.autoGainEnabled
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Column {
-                        Text(
-                            text = "COMPENSACIÓN AUTOMÁTICA DE HEADROOM",
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = SbzTextPrimary
-                        )
 
-                        Text(
-                            text = "Reduce automáticamente la ganancia cuando los refuerzos del DSP consumen margen",
-                            fontSize = 11.sp,
-                            color = SbzTextSecondary
-                        )
-                    }
+                    Text(
+                        text = "AUTOMATIC HEADROOM CONTROL",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = SbzTextPrimary
+                    )
 
-                    Switch(
-                        checked = config.autoGainEnabled,
-                        onCheckedChange = {
-                            viewModel.setAutoGain(
-                                it,
-                                config.autoGainTargetDb
-                            )
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = SbzCyan,
-                            checkedTrackColor = SbzCyanDim
-                        )
+                    Spacer(Modifier.height(3.dp))
+
+                    Text(
+                        text = "Compensación automática de ganancia",
+                        fontSize = 10.sp,
+                        color = SbzTextSecondary
                     )
                 }
 
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                Text(
-                    text = if (config.autoGainEnabled) {
-                        "Activo: el motor reduce automáticamente la ganancia de entrada cuando los refuerzos de EQ, tono y graves consumen demasiado margen."
-                    } else {
-                        "Desactivado: la ganancia de entrada usa únicamente el Pre-Gain configurado."
+                Switch(
+                    checked = config.autoGainEnabled,
+                    onCheckedChange = {
+                        viewModel.setAutoGain(
+                            it,
+                            config.autoGainTargetDb
+                        )
                     },
-                    fontSize = 11.sp,
-                    color = SbzTextSecondary
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = SbzCyan,
+                        checkedTrackColor = SbzCyanDim,
+                        uncheckedThumbColor = SbzTextSecondary,
+                        uncheckedTrackColor = SbzSurface
+                    )
                 )
             }
+
+            Spacer(Modifier.height(10.dp))
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(4.dp),
+                color = SbzSurface,
+                border = BorderStroke(
+                    1.dp,
+                    SbzBorder
+                )
+            ) {
+                Text(
+                    modifier = Modifier.padding(10.dp),
+                    text = if (config.autoGainEnabled) {
+                        "AUTO GAIN ACTIVE\nEl procesador reduce la ganancia de entrada cuando EQ, tono o graves consumen demasiado headroom."
+                    } else {
+                        "AUTO GAIN BYPASSED\nLa ganancia de entrada utiliza únicamente el Pre-Gain configurado."
+                    },
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    lineHeight = 14.sp,
+                    color = if (config.autoGainEnabled) {
+                        SbzCyan
+                    } else {
+                        SbzTextSecondary
+                    }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+// ====================================================================
+// RETRO PANEL
+// ====================================================================
+
+@Composable
+private fun RetroPanel(
+    title: String,
+    active: Boolean,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = SbzCardBg
+        ),
+        shape = RoundedCornerShape(6.dp),
+        border = BorderStroke(
+            1.dp,
+            if (active) {
+                SbzCyan.copy(alpha = 0.45f)
+            } else {
+                SbzBorder
+            }
+        )
+    ) {
+
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Text(
+                    text = title,
+                    modifier = Modifier.weight(1f),
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = if (active) {
+                        SbzCyan
+                    } else {
+                        SbzTextSecondary
+                    }
+                )
+
+                Text(
+                    text = if (active) "● ON" else "○ OFF",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    color = if (active) {
+                        SbzCyan
+                    } else {
+                        SbzTextSecondary
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            HorizontalDivider(
+                color = SbzBorder,
+                thickness = 1.dp
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            content()
         }
     }
 }
+
+// ====================================================================
+// MDRC BAND PARAMETERS
+// ====================================================================
 
 @Composable
 private fun BandParameters(
@@ -385,87 +545,110 @@ private fun BandParameters(
     enabled: Boolean,
     onBandChange: (MdrcBandConfig) -> Unit
 ) {
+
     Column(
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.alpha(
+            if (enabled) 1f else 0.55f
+        )
     ) {
+
+        Text(
+            text = "CROSSOVER / BAND ${bandIndex + 1}",
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            color = SbzCyan
+        )
+
         val minimumCutoff = crossoverMinimumHz(
             bandIndex = bandIndex,
             allBands = allBands
         )
+
         val maximumCutoff = crossoverMaximumHz(
             bandIndex = bandIndex,
             allBands = allBands
         )
+
         val currentCutoff = band.cutoffFrequencyHz.coerceIn(
             minimumCutoff,
             maximumCutoff
         )
 
-        Text(
-            text = "CORTES DEL CROSSOVER MDRC",
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            color = SbzCyan
-        )
-
-        Text(
-            text = "El corte de cada banda se aplica directamente al MBC nativo. Los cortes se mantienen ordenados para evitar solapamientos.",
-            fontSize = 11.sp,
-            color = SbzTextSecondary
-        )
-
-        Row(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            color = SbzSurface,
+            shape = RoundedCornerShape(4.dp),
+            border = BorderStroke(
+                1.dp,
+                SbzBorder
+            )
         ) {
-            Text(
-                text = "Frecuencia de corte",
-                fontSize = 12.sp,
-                color = SbzTextSecondary
-            )
 
-            Text(
-                text = formatFrequency(currentCutoff),
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                color = SbzCyan
-            )
-        }
+            Column(
+                modifier = Modifier.padding(10.dp)
+            ) {
 
-        Text(
-            text = "${formatFrequency(minimumCutoff)}  —  ${formatFrequency(maximumCutoff)}",
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-            color = SbzTextSecondary
-        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
 
-        Slider(
-            value = frequencyToSlider(
-                currentCutoff,
-                minimumCutoff,
-                maximumCutoff
-            ),
-            onValueChange = {
-                val frequency = sliderToFrequency(
-                    it,
-                    minimumCutoff,
-                    maximumCutoff
+                    Text(
+                        text = "FRECUENCIA DE CORTE",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        color = SbzTextSecondary
+                    )
+
+                    Text(
+                        text = formatFrequency(currentCutoff),
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = SbzCyan
+                    )
+                }
+
+                Spacer(Modifier.height(3.dp))
+
+                Text(
+                    text = "${formatFrequency(minimumCutoff)}  →  ${formatFrequency(maximumCutoff)}",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    color = SbzTextSecondary
                 )
 
-                onBandChange(
-                    band.copy(
-                        cutoffFrequencyHz = frequency
+                Slider(
+                    value = frequencyToSlider(
+                        currentCutoff,
+                        minimumCutoff,
+                        maximumCutoff
+                    ),
+                    onValueChange = {
+                        val frequency = sliderToFrequency(
+                            it,
+                            minimumCutoff,
+                            maximumCutoff
+                        )
+
+                        onBandChange(
+                            band.copy(
+                                cutoffFrequencyHz = frequency
+                            )
+                        )
+                    },
+                    valueRange = 0f..1f,
+                    enabled = enabled,
+                    colors = SliderDefaults.colors(
+                        thumbColor = SbzCyan,
+                        activeTrackColor = SbzCyan,
+                        inactiveTrackColor = SbzBorder
                     )
                 )
-            },
-            valueRange = 0f..1f,
-            enabled = enabled,
-            colors = SliderDefaults.colors(
-                thumbColor = SbzCyan,
-                activeTrackColor = SbzCyan
-            )
-        )
+            }
+        }
 
         ParamSlider(
             label = "Umbral",
@@ -492,7 +675,7 @@ private fun BandParameters(
         }
 
         ParamSlider(
-            label = "Tiempo de ataque",
+            label = "Ataque",
             value = band.attackMs,
             range = 0.5f..100f,
             format = "%.1f ms",
@@ -504,7 +687,7 @@ private fun BandParameters(
         }
 
         ParamSlider(
-            label = "Tiempo de liberación",
+            label = "Liberación",
             value = band.releaseMs,
             range = 10f..800f,
             format = "%.0f ms",
@@ -516,7 +699,7 @@ private fun BandParameters(
         }
 
         ParamSlider(
-            label = "Ganancia de compensación",
+            label = "Makeup Gain",
             value = band.makeupGainDb,
             range = 0f..12f,
             format = "+%.1f dB",
@@ -541,6 +724,10 @@ private fun BandParameters(
     }
 }
 
+// ====================================================================
+// HALL SLIDER
+// ====================================================================
+
 @Composable
 private fun HallSlider(
     label: String,
@@ -550,22 +737,34 @@ private fun HallSlider(
     enabled: Boolean,
     onValueChange: (Float) -> Unit
 ) {
-    Column {
+
+    Column(
+        modifier = Modifier.alpha(
+            if (enabled) 1f else 0.55f
+        )
+    ) {
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+
             Text(
                 text = label,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 color = SbzTextSecondary
             )
 
             Text(
                 text = format.format(value),
-                fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
-                color = SbzTextPrimary
+                fontSize = 10.sp,
+                color = if (enabled) {
+                    SbzCyan
+                } else {
+                    SbzTextSecondary
+                }
             )
         }
 
@@ -579,11 +778,16 @@ private fun HallSlider(
             enabled = enabled,
             colors = SliderDefaults.colors(
                 thumbColor = SbzCyan,
-                activeTrackColor = SbzCyan
+                activeTrackColor = SbzCyan,
+                inactiveTrackColor = SbzBorder
             )
         )
     }
 }
+
+// ====================================================================
+// PARAM SLIDER
+// ====================================================================
 
 @Composable
 private fun ParamSlider(
@@ -594,22 +798,34 @@ private fun ParamSlider(
     enabled: Boolean,
     onValueChange: (Float) -> Unit
 ) {
-    Column {
+
+    Column(
+        modifier = Modifier.alpha(
+            if (enabled) 1f else 0.55f
+        )
+    ) {
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+
             Text(
                 text = label,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 color = SbzTextSecondary
             )
 
             Text(
                 text = format.format(value),
-                fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
-                color = SbzTextPrimary
+                fontSize = 10.sp,
+                color = if (enabled) {
+                    SbzCyan
+                } else {
+                    SbzTextSecondary
+                }
             )
         }
 
@@ -623,18 +839,17 @@ private fun ParamSlider(
             enabled = enabled,
             colors = SliderDefaults.colors(
                 thumbColor = SbzCyan,
-                activeTrackColor = SbzCyan
+                activeTrackColor = SbzCyan,
+                inactiveTrackColor = SbzBorder
             )
         )
     }
 }
 
-/**
- * Converts 20 Hz .. 22 kHz to a logarithmic slider.
- *
- * Audio crossover frequencies must be represented
- * logarithmically rather than linearly.
- */
+// ====================================================================
+// MDRC CROSSOVER
+// ====================================================================
+
 private const val MDRC_MIN_CUTOFF_HZ = 20f
 private const val MDRC_MAX_CUTOFF_HZ = 22000f
 private const val MDRC_CUTOFF_GAP_HZ = 1f
@@ -667,22 +882,40 @@ private fun crossoverMaximumHz(
     }.coerceAtLeast(MDRC_MIN_CUTOFF_HZ)
 }
 
+// ====================================================================
+// LOGARITHMIC FREQUENCY MAPPING
+// ====================================================================
+
 private fun frequencyToSlider(
     hz: Float,
     minHz: Float,
     maxHz: Float
 ): Float {
+
     val safeMin = minHz
-        .coerceIn(MDRC_MIN_CUTOFF_HZ, MDRC_MAX_CUTOFF_HZ)
-        .toDouble()
-    val safeMax = maxHz
-        .coerceIn(safeMin.toFloat(), MDRC_MAX_CUTOFF_HZ)
-        .toDouble()
-    val safeHz = hz
-        .coerceIn(safeMin.toFloat(), safeMax.toFloat())
+        .coerceIn(
+            MDRC_MIN_CUTOFF_HZ,
+            MDRC_MAX_CUTOFF_HZ
+        )
         .toDouble()
 
-    if (safeMax <= safeMin) return 0f
+    val safeMax = maxHz
+        .coerceIn(
+            safeMin.toFloat(),
+            MDRC_MAX_CUTOFF_HZ
+        )
+        .toDouble()
+
+    val safeHz = hz
+        .coerceIn(
+            safeMin.toFloat(),
+            safeMax.toFloat()
+        )
+        .toDouble()
+
+    if (safeMax <= safeMin) {
+        return 0f
+    }
 
     return (
         (
@@ -701,22 +934,40 @@ private fun sliderToFrequency(
     minHz: Float,
     maxHz: Float
 ): Float {
-    val safeMin = minHz
-        .coerceIn(MDRC_MIN_CUTOFF_HZ, MDRC_MAX_CUTOFF_HZ)
-    val safeMax = maxHz
-        .coerceIn(safeMin, MDRC_MAX_CUTOFF_HZ)
 
-    if (safeMax <= safeMin) return safeMin
+    val safeMin = minHz.coerceIn(
+        MDRC_MIN_CUTOFF_HZ,
+        MDRC_MAX_CUTOFF_HZ
+    )
+
+    val safeMax = maxHz.coerceIn(
+        safeMin,
+        MDRC_MAX_CUTOFF_HZ
+    )
+
+    if (safeMax <= safeMin) {
+        return safeMin
+    }
 
     return kotlin.math.exp(
-        kotlin.math.ln(safeMin.toDouble()) +
+        kotlin.math.ln(
+            safeMin.toDouble()
+        ) +
             value.coerceIn(0f, 1f) *
             (
-                kotlin.math.ln(safeMax.toDouble()) -
-                    kotlin.math.ln(safeMin.toDouble())
+                kotlin.math.ln(
+                    safeMax.toDouble()
+                ) -
+                    kotlin.math.ln(
+                        safeMin.toDouble()
+                    )
                 )
     ).toFloat()
 }
+
+// ====================================================================
+// FREQUENCY FORMAT
+// ====================================================================
 
 private fun formatFrequency(
     hz: Float

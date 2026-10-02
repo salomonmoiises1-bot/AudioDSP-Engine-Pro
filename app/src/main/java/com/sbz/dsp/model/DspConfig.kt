@@ -198,10 +198,13 @@ data class DspConfig(
             0f
         }
 
-        // Include Pre-Gain in the estimate because the safeguard is applied
-        // together with Pre-Gain at the DynamicsProcessing input.
-        val estimatedPeakBoost = preGainDb + maxEqBoost + toneBoost + bassBoostComp
-        return -(estimatedPeakBoost - 6.0f).coerceAtLeast(0f)
+        // Headroom compensation is applied *in addition to* Pre-Gain at the
+        // DynamicsProcessing input. Therefore this function must return only
+        // the corrective attenuation. Including preGainDb here and then adding
+        // it again at the caller would attenuate/boost the signal twice.
+        val estimatedPostPreGainBoost = maxEqBoost + toneBoost + bassBoostComp
+        val totalBeforeCompensation = preGainDb + estimatedPostPreGainBoost
+        return -(totalBeforeCompensation - 6.0f).coerceAtLeast(0f)
     }
 }
 

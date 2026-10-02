@@ -27,7 +27,9 @@ fun EqualizerScreen(
     modifier: Modifier = Modifier
 ) {
     val config by viewModel.config.collectAsState()
-    val scrollState = rememberScrollState()
+    val topScrollState = rememberScrollState()
+    val bottomScrollState = rememberScrollState()
+    val frequencies = remember { DspConfig.FREQUENCIES.toList() }
 
     Column(
         modifier = modifier
@@ -35,7 +37,6 @@ fun EqualizerScreen(
             .background(SbzBackground)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-
         EqCurveVisualizer(
             eqGains = config.eqGains,
             toneBassDb = config.toneBassDb,
@@ -75,61 +76,77 @@ fun EqualizerScreen(
             OutlinedButton(
                 onClick = { viewModel.resetEq() },
                 shape = RoundedCornerShape(6.dp),
-                contentPadding = PaddingValues(
-                    horizontal = 10.dp,
-                    vertical = 4.dp
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = SbzCyan
-                ),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    SbzBorder
-                )
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = SbzCyan),
+                border = androidx.compose.foundation.BorderStroke(1.dp, SbzBorder)
             ) {
                 Icon(
                     imageVector = Icons.Default.RestartAlt,
                     contentDescription = "Plano",
                     modifier = Modifier.size(14.dp)
                 )
-
                 Spacer(Modifier.width(4.dp))
-
-                Text(
-                    text = "Plano (0 dB)",
-                    fontSize = 11.sp
-                )
+                Text(text = "Plano (0 dB)", fontSize = 11.sp)
             }
         }
 
         Spacer(Modifier.height(8.dp))
 
-        /*
-         * LAS 32 BANDAS EN UNA SOLA FILA
-         *
-         * La fila es más ancha que la pantalla y se desplaza
-         * horizontalmente para poder acceder a las 32 bandas.
-         */
-        Row(
+        // 32 bandas en dos filas de 16. Cada fila conserva su desplazamiento
+        // horizontal independiente porque cada fader mide 52 dp de ancho.
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .horizontalScroll(scrollState),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val frequencies = DspConfig.FREQUENCIES.toList()
+            EqBandRow(
+                frequencies = frequencies,
+                gains = config.eqGains,
+                startIndex = 0,
+                endIndex = 16,
+                scrollState = topScrollState,
+                onGainChanged = viewModel::setBandGain,
+                modifier = Modifier.weight(1f)
+            )
 
-            frequencies.forEachIndexed { index, frequency ->
+            EqBandRow(
+                frequencies = frequencies,
+                gains = config.eqGains,
+                startIndex = 16,
+                endIndex = 32,
+                scrollState = bottomScrollState,
+                onGainChanged = viewModel::setBandGain,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
 
-                SbzFader(
-                    gainDb = config.eqGains.getOrElse(index) { 0.0f },
-                    frequencyHz = frequency,
-                    onGainChanged = { gain ->
-                        viewModel.setBandGain(index, gain)
-                    }
-                )
-            }
+@Composable
+private fun EqBandRow(
+    frequencies: List<Float>,
+    gains: List<Float>,
+    startIndex: Int,
+    endIndex: Int,
+    scrollState: androidx.compose.foundation.ScrollState,
+    onGainChanged: (Int, Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        for (index in startIndex until endIndex) {
+            val frequency = frequencies[index]
+            SbzFader(
+                gainDb = gains.getOrElse(index) { 0.0f },
+                frequencyHz = frequency,
+                onGainChanged = { gain -> onGainChanged(index, gain) }
+            )
         }
     }
 }

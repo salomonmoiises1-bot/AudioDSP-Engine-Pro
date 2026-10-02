@@ -1,6 +1,8 @@
 package com.sbz.dsp
 
 import android.media.audiofx.DynamicsProcessing
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.os.Build
 import android.util.Log
 import java.util.concurrent.atomic.AtomicReference
@@ -17,7 +19,7 @@ import com.sbz.dsp.model.MdrcBandConfig
  *   -> Post-EQ
  *   -> Limiter
  *
- * Graphic EQ is applied once at full requested gain in Post-EQ.
+ * Graphic EQ is applied once at full requested gain in Pre-EQ.
  *
  * MDRC cutoff frequencies come directly from DspConfig.mdrcBands.
  */
@@ -32,7 +34,7 @@ class DynamicsProcessingManager(
         private const val PRIORITY = Int.MAX_VALUE
                 private const val CHANNEL_COUNT = 2
 
-        private const val REQUESTED_EQ_BANDS = 32
+        private val REQUESTED_EQ_BANDS = DspConfig.FREQUENCIES.size
         private const val EQ_BAND_Q = 4.318
 
         private const val MDRC_BAND_COUNT = 4
@@ -478,12 +480,26 @@ class DynamicsProcessingManager(
                     return@Runnable
                 }
 
-                val physicalCount = dp.getConfig().preEqBandCount
-                if (physicalCount <= 0) return@Runnable
+                val configuredBandCount = dp.getConfig().preEqBandCount
+                if (configuredBandCount != REQUESTED_EQ_BANDS) {
+                    Log.w(
+                        TAG,
+                        "DP returned an unexpected Pre-EQ band count: configured=$configuredBandCount requested=$REQUESTED_EQ_BANDS; " +
+                            "EQ write skipped instead of silently truncating the 32-band graph"
+                    )
+                    return@Runnable
+                }
 
                 // sBz intentionally keeps one fixed 32-band DP stage.
                 // There is no 128/127-band expansion here.
-                val eq = ParametricEqualizer(48000)
+                val sampleRate = try {
+                    AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC)
+                        .coerceIn(8000, 192000)
+                } catch (_: Throwable) {
+                    48000
+                }
+
+                val eq = ParametricEqualizer(sampleRate)
                 eq.clearBands()
                 val enabled = latest.isEnabled
                 for (index in DspConfig.FREQUENCIES.indices) {
@@ -512,15 +528,22 @@ class DynamicsProcessingManager(
                 }
                 eq.isEnabled = enabled
 
-                // Fixed 32-band realtime path: the physical cutoffs are exactly
-                // the 32 logical sBz frequencies. Only the resulting 32 gains
-                // are recalculated; there is no adaptive layout or FFT fit.
-                val converted = ParametricToDpConverter.convertFixed32(
-                    eq,
-                    DspConfig.FREQUENCIES
-                )
+                // Equalizer314-style 32-band conversion: feature-aware anchors,
+                // adaptive placement within the 32-band budget, and bin-aware
+                // band-space averaging. No 127/128-band expansion.
+                ParametricToDpConverter.deviceSampleRateHz = sampleRate.toFloat()
+                ParametricToDpConverter.frameDurationMs = DP_FRAME_DURATION_MS
+                ParametricToDpConverter.layoutFrozen = true
+                val converted = ParametricToDpConverter.convertFeatureAware(eq)
 
-                val n = minOf(physicalCount, converted.cutoffs.size)
+                val n = REQUESTED_EQ_BANDS
+                if (converted.cutoffs.size != n || converted.gains.size != n) {
+                    Log.w(
+                        TAG,
+                        "Converter returned an unexpected EQ size: cutoffs=${converted.cutoffs.size} gains=${converted.gains.size} expected=$n"
+                    )
+                    return@Runnable
+                }
                 if (n <= 0) return@Runnable
                 val cutoffs = converted.cutoffs.copyOf(n)
                 val gains = converted.gains.copyOf(n)

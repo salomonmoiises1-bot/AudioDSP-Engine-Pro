@@ -292,40 +292,54 @@ class DynamicsProcessingManager(
          * cutoff. The HAL expects these cutoffs to increase with band index.
          */
         val bands = normalizeMdrcBands(config.mdrcBands)
-        val source = bands.getOrNull(bandIndex) ?: defaultMdrcBand(bandIndex)
         val mdrcActive = config.isEnabled && config.mdrcEnabled
 
         for (channel in 0 until dp.channelCountSafe()) {
             try {
-                val nativeBand = createNativeMdrcBand(source, mdrcActive)
-
                 /*
-                 * A single-band update is intentionally kept surgical for
-                 * smooth fader response. No complete DSP rebuild is needed.
+                 * A crossover edit can change the normalized boundary of an
+                 * adjacent band. Write the complete four-band MBC stage as one
+                 * native configuration so the crossover set always remains
+                 * internally consistent. This is still a surgical MDRC update:
+                 * EQ, limiter, input gain and the rest of the DSP graph are
+                 * untouched and DynamicsProcessing itself is not rebuilt.
                  */
-                dp.setMbcBandByChannelIndex(
-                    channel,
-                    bandIndex,
-                    nativeBand
+                val nativeMbc = DynamicsProcessing.Mbc(
+                    config.isEnabled,
+                    mdrcActive,
+                    mdrcCount
                 )
 
-                /*
-                 * Read back the cutoff actually accepted by the HAL.
-                 * Vendor implementations are allowed to quantize/clamp
-                 * parameters, so the diagnostic log must reflect reality.
-                 */
-                val accepted = dp
-                    .getMbcBandByChannelIndex(channel, bandIndex)
-                    .getCutoffFrequency()
-
-                if (kotlin.math.abs(accepted - source.cutoffFrequencyHz) > 0.5f) {
-                    Log.w(
-                        TAG,
-                        "MDRC HAL adjusted cutoff: session=$audioSessionId " +
-                            "channel=$channel band=$bandIndex " +
-                            "requested=${source.cutoffFrequencyHz}Hz " +
-                            "accepted=${accepted}Hz"
+                for (index in 0 until mdrcCount) {
+                    val source = bands.getOrElse(index) { defaultMdrcBand(index) }
+                    nativeMbc.setBand(
+                        index,
+                        createNativeMdrcBand(source, mdrcActive)
                     )
+                }
+
+                dp.setMbcByChannelIndex(channel, nativeMbc)
+
+                /*
+                 * Read back every crossover. Vendor HALs may quantize or clamp
+                 * individual values, so diagnostics must report what was
+                 * actually accepted rather than only what the UI requested.
+                 */
+                for (index in 0 until mdrcCount) {
+                    val requested = bands.getOrElse(index) { defaultMdrcBand(index) }
+                        .cutoffFrequencyHz
+                    val accepted = dp
+                        .getMbcBandByChannelIndex(channel, index)
+                        .getCutoffFrequency()
+
+                    if (kotlin.math.abs(accepted - requested) > 0.5f) {
+                        Log.w(
+                            TAG,
+                            "MDRC HAL adjusted cutoff: session=$audioSessionId " +
+                                "channel=$channel band=$index " +
+                                "requested=${requested}Hz accepted=${accepted}Hz"
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(

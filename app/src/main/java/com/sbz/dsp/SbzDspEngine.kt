@@ -76,6 +76,9 @@ class SbzDspEngine {
                 Log.w(TAG, "Control lost on session $sessionId, scheduling reclaim...")
                 reclaimAllControl()
             }
+            // Never attach the native Virtualizer to global session 0.
+            // Some Android audio HALs can mute the entire output when a
+            // Virtualizer is created/enabled on the global session.
             val virtManager = VirtualizerManager(sessionId)
             val hallManager = HallReverbManager(sessionId)
 
@@ -189,6 +192,18 @@ class SbzDspEngine {
             }
             for (index in changedEqIndices) {
                 pipeline.dynamicsProcessing.updateEqBand(config, index)
+            }
+
+            // Virtualizer is a realtime effect. Apply it here when only its
+            // controls changed instead of waiting for a full pipeline rebuild.
+            if (previous.virtualizerEnabled != config.virtualizerEnabled ||
+                previous.virtualizerStrength != config.virtualizerStrength ||
+                previous.isEnabled != config.isEnabled
+            ) {
+                pipeline.virtualizer.apply(
+                    config.isEnabled && config.virtualizerEnabled,
+                    config.virtualizerStrength
+                )
             }
         }
         updateState()

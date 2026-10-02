@@ -522,8 +522,12 @@ class DynamicsProcessingManager(
                         eq.addBand(8000f, latest.toneTrebleDb.coerceIn(-12f, 12f), BiquadFilter.FilterType.BELL, 0.707)
                     }
                     if (latest.bassBoostEnabled && latest.bassBoostStrength > 0) {
-                        val boost = (latest.bassBoostStrength.coerceIn(0, 1000) / 1000f) * 6f
-                        eq.addBand(100f, boost, BiquadFilter.FilterType.LOW_SHELF, 0.707)
+                        // Dedicated Bass Boost stage: stronger and lower than the
+                        // previous 100 Hz / +6 dB implementation, while remaining
+                        // independent from the 32 logical EQ bands.
+                        val boost =
+                            (latest.bassBoostStrength.coerceIn(0, 1000) / 1000f) * 10f
+                        eq.addBand(85f, boost, BiquadFilter.FilterType.LOW_SHELF, 0.707)
                     }
                 }
                 eq.isEnabled = enabled

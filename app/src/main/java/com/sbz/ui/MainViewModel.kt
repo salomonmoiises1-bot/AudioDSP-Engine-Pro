@@ -96,12 +96,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setPreGain(gainDb: Float) {
         val current = _config.value
-        updateConfig(current.copy(preGainDb = gainDb.coerceIn(-12.0f, 12.0f)))
+        updateRealtimeConfig(current.copy(preGainDb = gainDb.coerceIn(-12.0f, 12.0f)))
     }
 
     fun setBassBoost(enabled: Boolean, strength: Short) {
         val current = _config.value
-        updateConfig(current.copy(bassBoostEnabled = enabled, bassBoostStrength = strength))
+        updateRealtimeConfig(
+            current.copy(
+                bassBoostEnabled = enabled,
+                bassBoostStrength = strength.coerceIn(0, 1000)
+            )
+        )
     }
 
     fun setTone(bassDb: Float, midDb: Float, trebleDb: Float) {
@@ -197,12 +202,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAutoGain(enabled: Boolean, targetDb: Float) {
         val current = _config.value
-        updateConfig(current.copy(autoGainEnabled = enabled, autoGainTargetDb = targetDb))
+        updateRealtimeConfig(
+            current.copy(
+                autoGainEnabled = enabled,
+                autoGainTargetDb = targetDb.coerceIn(-60f, 0f)
+            )
+        )
     }
 
     fun setVirtualizer(enabled: Boolean, strength: Short) {
         val current = _config.value
-        updateConfig(current.copy(virtualizerEnabled = enabled, virtualizerStrength = strength))
+        updateRealtimeConfig(
+            current.copy(
+                virtualizerEnabled = enabled,
+                virtualizerStrength = strength.coerceIn(0, 1000)
+            )
+        )
     }
 
     fun setLimiter(
@@ -214,14 +229,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         postGainDb: Float
     ) {
         val current = _config.value
-        updateConfig(
+        updateRealtimeConfig(
             current.copy(
                 limiterEnabled = enabled,
-                limiterThresholdDb = thresholdDb,
-                limiterAttackMs = attackMs,
-                limiterReleaseMs = releaseMs,
-                limiterRatio = ratio,
-                limiterPostGainDb = postGainDb
+                limiterThresholdDb = thresholdDb.coerceIn(-60f, 0f),
+                limiterAttackMs = attackMs.coerceIn(0.1f, 1000f),
+                limiterReleaseMs = releaseMs.coerceIn(1f, 2000f),
+                limiterRatio = ratio.coerceIn(1f, 100f),
+                limiterPostGainDb = postGainDb.coerceIn(-24f, 12f)
             )
         )
     }

@@ -46,6 +46,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var audioService: SbzAudioService? = null
     private var persistJob: Job? = null
+    private var engineStatusJob: Job? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -55,7 +56,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             audioService?.let { s ->
                 _config.value = s.getCurrentConfig()
-                viewModelScope.launch {
+                engineStatusJob?.cancel()
+                engineStatusJob = viewModelScope.launch {
                     s.dspEngine.engineState.collect { status ->
                         _engineStatus.value = status
                     }
@@ -64,6 +66,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            engineStatusJob?.cancel()
+            engineStatusJob = null
             audioService = null
             _isServiceBound.value = false
         }
@@ -256,12 +260,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deletePreset(id: String) {
+        val wasSelected = _selectedPresetId.value == id
         presetRepo.deleteCustomPreset(id)
-        if (_selectedPresetId.value == id) {
-            _selectedPresetId.value = "system_flat"
-            presetRepo.setSelectedPresetId("system_flat")
-        }
         _presets.value = presetRepo.getAllPresets()
+
+        if (wasSelected) {
+            val flat = _presets.value.firstOrNull { it.id == "system_flat" }
+            if (flat != null) {
+                _selectedPresetId.value = flat.id
+                presetRepo.setSelectedPresetId(flat.id)
+                updateConfig(flat.config)
+            } else {
+                _selectedPresetId.value = "system_flat"
+                presetRepo.setSelectedPresetId("system_flat")
+            }
+        }
     }
 
     fun duplicatePreset(id: String, name: String) {
@@ -317,6 +330,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Ignored
         }
         persistJob?.cancel()
+        engineStatusJob?.cancel()
         presetRepo.saveActiveConfig(_config.value)
         super.onCleared()
     }

@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
 import com.sbz.MainActivity
 import com.sbz.R
 import com.sbz.data.PresetRepository
@@ -53,18 +54,22 @@ class SbzAudioService : Service() {
     private lateinit var presetRepo: PresetRepository
     private lateinit var audioManager: AudioManager
     private var activeConfig = DspConfig()
-    private val dspExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "sBz-DSP").apply { isDaemon = true }
-    }
+
+    private val dspExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "sBz-DSP").apply { isDaemon = true }
+        }
+
     // Never queue every intermediate fader position. Keep only the newest state.
     private val pendingConfig = AtomicReference<DspConfig?>(null)
     private val configWorkerScheduled = AtomicBoolean(false)
+
     private val pendingRealtimeConfig = AtomicReference<DspConfig?>(null)
     private val realtimeWorkerScheduled = AtomicBoolean(false)
 
     // Rate-limit native EQ/DSP writes to ~60 Hz while a fader is moving.
-    // UI state remains immediate; only native effect updates are coalesced.
     private val realtimeMinIntervalNanos = 16_000_000L
+
     @Volatile
     private var lastRealtimeApplyNanos = 0L
 
@@ -73,13 +78,18 @@ class SbzAudioService : Service() {
     }
 
     private val audioDeviceCallback = object : AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+
+        override fun onAudioDevicesAdded(
+            addedDevices: Array<out AudioDeviceInfo>?
+        ) {
             super.onAudioDevicesAdded(addedDevices)
             Log.d(TAG, "Audio device connected, re-verifying DSP pipelines...")
             dspEngine.reclaimAllControl()
         }
 
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+        override fun onAudioDevicesRemoved(
+            removedDevices: Array<out AudioDeviceInfo>?
+        ) {
             super.onAudioDevicesRemoved(removedDevices)
             Log.d(TAG, "Audio device disconnected, re-verifying DSP pipelines...")
             dspEngine.reclaimAllControl()
@@ -88,60 +98,97 @@ class SbzAudioService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
         Log.i(TAG, "Creating SbzAudioService...")
+
         presetRepo = PresetRepository(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         createNotificationChannel()
         activeConfig = presetRepo.loadActiveConfig()
 
-        // Register hardware device change callback
         try {
-            audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+            audioManager.registerAudioDeviceCallback(
+                audioDeviceCallback,
+                null
+            )
         } catch (e: Exception) {
-            Log.w(TAG, "Could not register audioDeviceCallback: ${e.message}")
+            Log.w(
+                TAG,
+                "Could not register audioDeviceCallback: ${e.message}"
+            )
         }
 
-        // Start DSP Engine and apply restored configuration
         dspEngine.start()
         dspEngine.updateConfig(activeConfig)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
+
         val action = intent?.action ?: ACTION_START
+
         Log.d(TAG, "onStartCommand action: $action")
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification()
+        )
 
         when (action) {
+
             ACTION_START -> {
                 if (!dspEngine.engineState.value.isRunning) {
                     dspEngine.start()
                     dspEngine.updateConfig(activeConfig)
                 }
             }
+
             ACTION_STOP -> {
                 dspEngine.stop()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
+
             ACTION_TOGGLE_DSP -> {
                 val newEnabled = !activeConfig.isEnabled
-                updateConfig(activeConfig.copy(isEnabled = newEnabled), persist = true)
+
+                updateConfig(
+                    activeConfig.copy(
+                        isEnabled = newEnabled
+                    ),
+                    persist = true
+                )
             }
+
             ACTION_ATTACH_SESSION -> {
-                val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
+                val sessionId =
+                    intent.getIntExtra(
+                        EXTRA_SESSION_ID,
+                        -1
+                    )
+
                 if (sessionId != -1) {
                     dspEngine.attachSession(sessionId)
                 }
             }
+
             ACTION_DETACH_SESSION -> {
-                val sessionId = intent?.getIntExtra(EXTRA_SESSION_ID, -1) ?: -1
+                val sessionId =
+                    intent.getIntExtra(
+                        EXTRA_SESSION_ID,
+                        -1
+                    )
+
                 if (sessionId != -1) {
                     dspEngine.detachSession(sessionId)
                 }
             }
+
             ACTION_RECLAIM_CONTROL -> {
                 dspEngine.reclaimAllControl()
             }
@@ -154,39 +201,52 @@ class SbzAudioService : Service() {
         newConfig: DspConfig,
         persist: Boolean = true
     ) {
+
         val wasEnabled = activeConfig.isEnabled
+
         activeConfig = newConfig
 
         if (persist) {
             presetRepo.saveActiveConfig(newConfig)
         }
 
-        // Native effect setters can block briefly on some HALs. Keep them off
-        // the main/UI thread so fader dragging stays responsive.
+        // Native effect setters can block briefly on some HALs.
+        // Keep them off the main/UI thread.
         pendingConfig.set(newConfig)
         scheduleLatestConfigApply()
 
-        // The notification only exposes DSP status, so rebuilding it for every
-        // fader/EQ event is unnecessary work. Refresh only when that status changes.
+        // Refresh notification only when DSP status changes.
         if (wasEnabled != newConfig.isEnabled) {
             updateNotification()
         }
     }
 
-
     private fun scheduleLatestConfigApply() {
-        if (!configWorkerScheduled.compareAndSet(false, true)) return
+
+        if (!configWorkerScheduled.compareAndSet(false, true)) {
+            return
+        }
+
         dspExecutor.execute {
+
             try {
+
                 while (true) {
-                    val config = pendingConfig.getAndSet(null) ?: break
+
+                    val config =
+                        pendingConfig.getAndSet(null)
+                            ?: break
+
                     dspEngine.updateConfig(config)
-                    // If UI generated newer values while native setters were running,
-                    // apply only the newest state on the next pass.
                 }
+
             } finally {
+
                 configWorkerScheduled.set(false)
-                if (pendingConfig.get() != null) scheduleLatestConfigApply()
+
+                if (pendingConfig.get() != null) {
+                    scheduleLatestConfigApply()
+                }
             }
         }
     }
@@ -199,127 +259,277 @@ class SbzAudioService : Service() {
         newConfig: DspConfig,
         bandIndex: Int
     ) {
+
         activeConfig = newConfig
+
         dspExecutor.execute {
-            dspEngine.updateMdrcBand(newConfig, bandIndex)
+            dspEngine.updateMdrcBand(
+                newConfig,
+                bandIndex
+            )
         }
     }
 
-    fun updateRealtimeConfig(newConfig: DspConfig) {
+    fun updateRealtimeConfig(
+        newConfig: DspConfig
+    ) {
+
         val wasEnabled = activeConfig.isEnabled
+
         activeConfig = newConfig
+
         pendingRealtimeConfig.set(newConfig)
         scheduleLatestRealtimeApply()
+
         if (wasEnabled != newConfig.isEnabled) {
             updateNotification()
         }
     }
 
     private fun scheduleLatestRealtimeApply() {
-        if (!realtimeWorkerScheduled.compareAndSet(false, true)) return
+
+        if (!realtimeWorkerScheduled.compareAndSet(false, true)) {
+            return
+        }
 
         dspExecutor.execute {
-            try {
-                while (true) {
-                    if (pendingRealtimeConfig.get() == null) break
 
-                    // Keep the first update immediate, then cap subsequent native
-                    // writes to ~60 Hz. During the wait, newer fader values replace
-                    // the pending one, so obsolete intermediate positions are skipped.
-                    val elapsed = System.nanoTime() - lastRealtimeApplyNanos
-                    val remaining = realtimeMinIntervalNanos - elapsed
-                    if (lastRealtimeApplyNanos != 0L && remaining > 0L) {
+            try {
+
+                while (true) {
+
+                    if (pendingRealtimeConfig.get() == null) {
+                        break
+                    }
+
+                    val elapsed =
+                        System.nanoTime() -
+                                lastRealtimeApplyNanos
+
+                    val remaining =
+                        realtimeMinIntervalNanos -
+                                elapsed
+
+                    if (
+                        lastRealtimeApplyNanos != 0L &&
+                        remaining > 0L
+                    ) {
+
                         try {
-                            val millis = remaining / 1_000_000L
-                            val nanos = (remaining % 1_000_000L).toInt()
-                            Thread.sleep(millis, nanos)
+
+                            val millis =
+                                remaining / 1_000_000L
+
+                            val nanos =
+                                (remaining % 1_000_000L).toInt()
+
+                            Thread.sleep(
+                                millis,
+                                nanos
+                            )
+
                         } catch (_: InterruptedException) {
+
                             Thread.currentThread().interrupt()
                             break
                         }
                     }
 
-                    val config = pendingRealtimeConfig.getAndSet(null) ?: continue
+                    val config =
+                        pendingRealtimeConfig
+                            .getAndSet(null)
+                            ?: continue
+
                     dspEngine.updateRealtimeConfig(config)
-                    lastRealtimeApplyNanos = System.nanoTime()
+
+                    lastRealtimeApplyNanos =
+                        System.nanoTime()
                 }
+
             } finally {
+
                 realtimeWorkerScheduled.set(false)
-                if (pendingRealtimeConfig.get() != null) scheduleLatestRealtimeApply()
+
+                if (pendingRealtimeConfig.get() != null) {
+                    scheduleLatestRealtimeApply()
+                }
             }
         }
     }
 
-    fun getCurrentConfig(): DspConfig = activeConfig
+    fun getCurrentConfig(): DspConfig =
+        activeConfig
 
     private fun createNotificationChannel() {
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
                 "sBz DSP Engine",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Estado del procesamiento DSP de audio activo"
+
+                description =
+                    "Estado del procesamiento DSP de audio activo"
+
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
+
+            val manager =
+                getSystemService(
+                    NotificationManager::class.java
+                )
+
             manager?.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(): Notification {
-        val mainIntent = Intent(this, MainActivity::class.java)
-        val pMain = PendingIntent.getActivity(
-            this, 0, mainIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+
+        val mainIntent =
+            Intent(
+                this,
+                MainActivity::class.java
+            )
+
+        val pMain =
+            PendingIntent.getActivity(
+                this,
+                0,
+                mainIntent,
+                PendingIntent.FLAG_IMMUTABLE or
+                        PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+        // Botón DSP: activar / omitir
+        val toggleIntent =
+            Intent(
+                this,
+                SbzAudioService::class.java
+            ).apply {
+                action = ACTION_TOGGLE_DSP
+            }
+
+        val pToggle =
+            PendingIntent.getService(
+                this,
+                1,
+                toggleIntent,
+                PendingIntent.FLAG_IMMUTABLE or
+                        PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+        // Botón STOP: detener completamente el motor
+        val stopIntent =
+            Intent(
+                this,
+                SbzAudioService::class.java
+            ).apply {
+                action = ACTION_STOP
+            }
+
+        val pStop =
+            PendingIntent.getService(
+                this,
+                2,
+                stopIntent,
+                PendingIntent.FLAG_IMMUTABLE or
+                        PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+        val statusText =
+            if (activeConfig.isEnabled) {
+                "DSP activo • Procesando"
+            } else {
+                "DSP omitido"
+            }
+
+        return NotificationCompat.Builder(
+            this,
+            NOTIFICATION_CHANNEL_ID
         )
-
-        val toggleIntent = Intent(this, SbzAudioService::class.java).apply { action = ACTION_TOGGLE_DSP }
-        val pToggle = PendingIntent.getService(
-            this, 1, toggleIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val stopIntent = Intent(this, SbzAudioService::class.java).apply { action = ACTION_STOP }
-        val pStop = PendingIntent.getService(
-            this, 2, stopIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val statusText = if (activeConfig.isEnabled) "DSP activo • Procesando" else "DSP omitido"
-
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("sBz Audio DSP")
             .setContentText(statusText)
             .setSmallIcon(R.drawable.ic_stat_sbz)
             .setContentIntent(pMain)
             .setOngoing(true)
+
+            // Icono DSP
             .addAction(
-                0,
-                if (activeConfig.isEnabled) "Omitir" else "Activar",
-                pToggle
+                NotificationCompat.Action.Builder(
+                    IconCompat.createWithResource(
+                        this,
+                        R.drawable.ic_dsp_toggle
+                    ),
+                    if (activeConfig.isEnabled) {
+                        "Omitir"
+                    } else {
+                        "Activar"
+                    },
+                    pToggle
+                ).build()
             )
-            .addAction(0, "Detener motor", pStop)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+
+            // Icono STOP
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    IconCompat.createWithResource(
+                        this,
+                        R.drawable.ic_stop
+                    ),
+                    "Detener motor",
+                    pStop
+                ).build()
+            )
+
+            .setPriority(
+                NotificationCompat.PRIORITY_LOW
+            )
             .build()
     }
 
     private fun updateNotification() {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.notify(NOTIFICATION_ID, buildNotification())
+
+        val manager =
+            getSystemService(
+                NotificationManager::class.java
+            )
+
+        manager?.notify(
+            NOTIFICATION_ID,
+            buildNotification()
+        )
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(
+        intent: Intent?
+    ): IBinder = binder
 
     override fun onDestroy() {
-        Log.i(TAG, "Destroying SbzAudioService...")
+
+        Log.i(
+            TAG,
+            "Destroying SbzAudioService..."
+        )
+
         try {
-            audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
+
+            audioManager.unregisterAudioDeviceCallback(
+                audioDeviceCallback
+            )
+
         } catch (e: Exception) {
-            Log.w(TAG, "Error unregistering audioDeviceCallback: ${e.message}")
+
+            Log.w(
+                TAG,
+                "Error unregistering audioDeviceCallback: ${e.message}"
+            )
         }
+
         dspExecutor.shutdownNow()
         dspEngine.stop()
+
         super.onDestroy()
     }
 }

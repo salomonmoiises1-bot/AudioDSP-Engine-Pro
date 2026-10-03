@@ -144,7 +144,7 @@ fun EqualizerScreen(
                         color = SbzCyan
                     )
                     Text(
-                        text = "±12 dB",
+                        text = "±15 dB",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 8.sp,
                         color = SbzTextSecondary
@@ -304,16 +304,16 @@ private fun EqBandControl(
             contentAlignment = Alignment.Center
         ) {
             Slider(
-                value = gainDb.coerceIn(-12f, 12f),
+                value = gainDb.coerceIn(-15f, 15f),
                 onValueChange = { value ->
                     val stepped = (round(value * 2f) / 2f)
-                        .coerceIn(-12f, 12f)
+                        .coerceIn(-15f, 15f)
 
                     if (stepped != gainDb) {
                         onGainChanged(stepped)
                     }
                 },
-                valueRange = -12f..12f,
+                valueRange = -15f..15f,
                 steps = 47,
                 modifier = Modifier
                     .width(145.dp)

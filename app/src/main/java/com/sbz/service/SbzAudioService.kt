@@ -167,10 +167,10 @@ class SbzAudioService : Service() {
 
             ACTION_ATTACH_SESSION -> {
                 val sessionId =
-                    intent.getIntExtra(
+                    intent?.getIntExtra(
                         EXTRA_SESSION_ID,
                         -1
-                    )
+                    ) ?: -1
 
                 if (sessionId != -1) {
                     dspEngine.attachSession(sessionId)
@@ -179,10 +179,10 @@ class SbzAudioService : Service() {
 
             ACTION_DETACH_SESSION -> {
                 val sessionId =
-                    intent.getIntExtra(
+                    intent?.getIntExtra(
                         EXTRA_SESSION_ID,
                         -1
-                    )
+                    ) ?: -1
 
                 if (sessionId != -1) {
                     dspEngine.detachSession(sessionId)

@@ -147,7 +147,6 @@ class SbzAudioService : Service() {
             }
         }
 
-        updateNotification()
         return START_STICKY
     }
 
@@ -155,6 +154,7 @@ class SbzAudioService : Service() {
         newConfig: DspConfig,
         persist: Boolean = true
     ) {
+        val wasEnabled = activeConfig.isEnabled
         activeConfig = newConfig
 
         if (persist) {
@@ -166,7 +166,11 @@ class SbzAudioService : Service() {
         pendingConfig.set(newConfig)
         scheduleLatestConfigApply()
 
-        updateNotification()
+        // The notification only exposes DSP status, so rebuilding it for every
+        // fader/EQ event is unnecessary work. Refresh only when that status changes.
+        if (wasEnabled != newConfig.isEnabled) {
+            updateNotification()
+        }
     }
 
 
@@ -202,10 +206,13 @@ class SbzAudioService : Service() {
     }
 
     fun updateRealtimeConfig(newConfig: DspConfig) {
+        val wasEnabled = activeConfig.isEnabled
         activeConfig = newConfig
         pendingRealtimeConfig.set(newConfig)
         scheduleLatestRealtimeApply()
-        updateNotification()
+        if (wasEnabled != newConfig.isEnabled) {
+            updateNotification()
+        }
     }
 
     private fun scheduleLatestRealtimeApply() {
@@ -284,7 +291,7 @@ class SbzAudioService : Service() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("sBz Audio DSP")
             .setContentText(statusText)
-            .setSmallIcon(R.drawable.ic_sbz_logo)
+            .setSmallIcon(R.drawable.ic_stat_sbz)
             .setContentIntent(pMain)
             .setOngoing(true)
             .addAction(

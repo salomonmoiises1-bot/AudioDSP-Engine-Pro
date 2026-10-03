@@ -34,6 +34,9 @@ fun KnobControl(
     modifier: Modifier = Modifier,
     activeColor: Color = SbzCyan
 ) {
+    val currentValue = rememberUpdatedState(value)
+    var gestureValue by remember { mutableStateOf(value) }
+
     val norm = remember(value, range) {
         ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
     }
@@ -41,7 +44,6 @@ fun KnobControl(
     val displayValue = remember(value) {
         if (value > 0f) "+%.1f".format(value) else "%.1f".format(value)
     }
-    val latestValue by rememberUpdatedState(value)
 
     Column(
         modifier = modifier.width(80.dp),
@@ -62,19 +64,17 @@ fun KnobControl(
             modifier = Modifier
                 .size(64.dp)
                 .pointerInput(range) {
-                    var valueAtGestureStart = latestValue
                     detectVerticalDragGestures(
                         onDragStart = {
-                            valueAtGestureStart = latestValue
+                            gestureValue = currentValue.value
                         },
                         onVerticalDrag = { change, dragAmount ->
                             change.consume()
                             val span = range.endInclusive - range.start
                             val delta = -(dragAmount / 150f) * span
-                            val newValue = (valueAtGestureStart + delta)
+                            gestureValue = (gestureValue + delta)
                                 .coerceIn(range.start, range.endInclusive)
-                            valueAtGestureStart = newValue
-                            onValueChange(newValue)
+                            onValueChange(gestureValue)
                         }
                     )
                 },
